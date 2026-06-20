@@ -94,13 +94,6 @@ function releaseRequest(key: string) {
   inFlightRequests.delete(key);
 }
 
-function redirectIfBlocked(code: string | undefined) {
-  if (code !== 'ip_banned' || typeof window === 'undefined') return;
-  if (window.location.pathname !== '/blocked') {
-    window.location.href = '/blocked';
-  }
-}
-
 export async function api<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, isAdmin = false, skipAuth = false } = options;
   assertApiBaseUrl();
@@ -153,7 +146,6 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
     } catch {
       // ignore parse error
     }
-    redirectIfBlocked(code);
     
     // Handle specific status codes
     if (response.status === 401) {

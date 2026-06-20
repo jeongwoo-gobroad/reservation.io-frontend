@@ -60,8 +60,9 @@
 중요 규칙:
 
 - 틀린 ID/PW는 401
-- 같은 IP에서 `ADMIN_LOGIN_FAIL_LIMIT`회 이상 실패하면 `ip_bans`에 자동 등록
-- 밴 IP는 로그인뿐 아니라 관리자 API 전체가 403으로 차단됨
+- 관리자 로그인 실패는 프론트엔드에서 IP 밴으로 해석하지 않습니다.
+- 과도한 로그인 시도와 반복 요청은 Vercel Proxy + Redis Sliding Window Counter에서 차단합니다.
+- 백엔드 DB 기반 IP 밴과 `ip_bans` 운영 차단은 비활성화되었습니다.
 
 ### POST `/auth/kakao/exchange`
 
@@ -477,27 +478,19 @@ GET /admin/reservations?sale_date=2026-07-01&nickname=피카
 
 사용자 제한을 비활성화합니다.
 
-## IP 밴
+## IP 밴 호환 API
 
 ### GET `/admin/ip-bans`
 
-IP 밴 목록입니다.
+호환용 엔드포인트입니다. 운영 요청 차단에 사용하지 않으며 빈 배열을 반환합니다.
 
 ### POST `/admin/ip-bans`
 
-IP 밴을 추가 또는 수정합니다.
-
-```json
-{
-  "ip_address": "203.0.113.10",
-  "reason": "관리자 로그인 실패 누적",
-  "active": true
-}
-```
+호환용 엔드포인트입니다. 프론트엔드는 호출하지 않으며, 백엔드는 410을 반환합니다.
 
 ### DELETE `/admin/ip-bans/{ip_address}`
 
-IP 밴을 삭제합니다.
+호환용 엔드포인트입니다. 프론트엔드는 호출하지 않으며, 백엔드는 no-op 204를 반환합니다.
 
 ## 설정
 

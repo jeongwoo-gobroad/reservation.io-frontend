@@ -9,7 +9,7 @@ import AppShell from '@/components/Layout/AppShell';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import MarkdownViewer from '@/components/common/MarkdownViewer';
 
-type SettingKey = 'disclaimer_markdown' | 'reservation_agreement_markdown' | 'blocked_user_message_markdown';
+type SettingKey = 'disclaimer_markdown' | 'reservation_agreement_markdown';
 
 const labels: Record<SettingKey, { title: string; description: string }> = {
   disclaimer_markdown: {
@@ -20,10 +20,6 @@ const labels: Record<SettingKey, { title: string; description: string }> = {
     title: '예약 동의 메시지',
     description: '예약 버튼을 누르기 전 다시 확인하는 내용입니다.',
   },
-  blocked_user_message_markdown: {
-    title: '접속 제한 안내문',
-    description: 'IP 제한 시 손님에게 보여줄 안내입니다.',
-  },
 };
 
 export default function AdminSettingsPage() {
@@ -31,7 +27,6 @@ export default function AdminSettingsPage() {
   const [values, setValues] = useState<Record<SettingKey, string>>({
     disclaimer_markdown: '',
     reservation_agreement_markdown: '',
-    blocked_user_message_markdown: '',
   });
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<SettingKey | null>(null);
@@ -41,15 +36,13 @@ export default function AdminSettingsPage() {
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const [disclaimer, agreement, blocked] = await Promise.all([
+      const [disclaimer, agreement] = await Promise.all([
         apiGet<SettingValue>('/admin/settings/disclaimer_markdown', true),
         apiGet<SettingValue>('/admin/settings/reservation_agreement_markdown', true),
-        apiGet<SettingValue>('/admin/settings/blocked_user_message_markdown', true),
       ]);
       setValues({
         disclaimer_markdown: disclaimer.value || '',
         reservation_agreement_markdown: agreement.value || '',
-        blocked_user_message_markdown: blocked.value || '',
       });
       setError('');
     } catch (err) {

@@ -162,18 +162,6 @@ export interface BannedUser {
   created_at?: string;
 }
 
-export interface IpBan {
-  id?: number;
-  ip_address: string;
-  actor_key?: string;
-  user_uuid?: string;
-  nickname?: string;
-  reason?: string;
-  active?: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
 export interface SettingValue {
   key?: string;
   value: string;
@@ -183,16 +171,6 @@ export interface UserProfile {
   user_uuid: string;
   kakao_id?: string;
   nickname?: string;
-}
-
-export interface BlockStatus {
-  blocked: boolean;
-  ip_address?: string;
-  actor_key?: string;
-  user_uuid?: string;
-  nickname?: string;
-  reason?: string;
-  message_markdown?: string;
 }
 
 export interface ReservationUpdateResponse {

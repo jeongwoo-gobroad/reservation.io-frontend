@@ -9,7 +9,6 @@ import {
   Home,
   LogOut,
   QrCode,
-  Shield,
   UserRound,
 } from 'lucide-react';
 import Footer from '@/components/Layout/Footer';
@@ -45,7 +44,6 @@ const adminNav: ShellAction[] = [
   { href: '/admin/schedules', label: '일정 관리', icon: <CalendarDays size={18} /> },
   { href: '/admin/reservations', label: '예약 현황', icon: <ClipboardCheck size={18} /> },
   { href: '/admin/banned-users', label: '예약 제한', icon: <UserRound size={18} /> },
-  { href: '/admin/ip-bans', label: 'IP 관리', icon: <Shield size={18} /> },
   { href: '/admin/settings', label: '문구 관리', icon: <ClipboardCheck size={18} /> },
 ];
 

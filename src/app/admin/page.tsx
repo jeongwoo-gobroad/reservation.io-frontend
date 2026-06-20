@@ -7,7 +7,6 @@ import {
   CalendarDays,
   ClipboardCheck,
   FileText,
-  Network,
   QrCode,
   RefreshCw,
   Settings,
@@ -26,7 +25,6 @@ const menuItems = [
   { href: '/admin/schedules', title: '판매 일정 만들기', description: '날짜, 상품, 재고, 방문 시간 관리', icon: <CalendarDays size={20} /> },
   { href: '/admin/reservations', title: '현재 예약 현황', description: '날짜와 닉네임으로 예약 조회', icon: <ClipboardCheck size={20} /> },
   { href: '/admin/banned-users', title: '노쇼/예약 제한', description: '예약 제한 고객과 기준 관리', icon: <Ban size={20} /> },
-  { href: '/admin/ip-bans', title: 'IP 관리', description: '관리자 접속 제한 IP 관리', icon: <Network size={20} /> },
   { href: '/admin/settings', title: '안내문 관리', description: '로그인 안내와 예약 동의 문구', icon: <FileText size={20} /> },
 ];
 
