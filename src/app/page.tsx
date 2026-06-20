@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { CalendarCheck, MessageCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { KAKAO_REST_API_KEY, KAKAO_REDIRECT_URI } from '@/lib/constants';
+import { KAKAO_REST_API_KEY, KAKAO_REDIRECT_URI, SERVICE_NAME } from '@/lib/constants';
 import { isUserLoggedIn } from '@/lib/auth';
 import Footer from '@/components/Layout/Footer';
 
@@ -28,7 +28,7 @@ export default function LoginPage() {
         <section className="auth-panel animate-fade-in-up" aria-labelledby="login-title">
           <div className="auth-brand">
             <span className="auth-brand-mark">R</span>
-            <h1 id="login-title">Reservatio</h1>
+            <h1 id="login-title">{SERVICE_NAME}</h1>
             <p>빠르게 예약하고, 현장에서 간단히 확인합니다.</p>
           </div>
           <div className="surface surface-body stack">

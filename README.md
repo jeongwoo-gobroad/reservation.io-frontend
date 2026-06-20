@@ -1,6 +1,6 @@
-# Reservatio 프론트엔드
+# reservation.io 프론트엔드
 
-예약 시스템 **Reservatio**의 Vercel 배포용 프론트엔드입니다. 이 워크스페이스 자체를 GitHub 저장소로 사용하고, GitHub Actions로 검증한 뒤 Vercel Git 연동으로 Production/Preview 배포를 수행합니다.
+예약 시스템 **reservation.io**의 Vercel 배포용 프론트엔드입니다. 이 워크스페이스 자체를 GitHub 저장소로 사용하고, GitHub Actions로 검증한 뒤 Vercel Git 연동으로 Production/Preview 배포를 수행합니다.
 
 ## 기술 스택
 
@@ -80,7 +80,7 @@ GitHub Actions도 동일한 흐름으로 `lint -> typecheck -> build`를 실행�
 git init
 git branch -M main
 git add .
-git commit -m "Initial Reservatio frontend"
+git commit -m "Initial reservation.io frontend"
 git remote add origin https://github.com/<owner>/<repo>.git
 git push -u origin main
 ```
@@ -107,7 +107,7 @@ https://your-domain.vercel.app/oauth/kakao/callback
 ## 백엔드 연동 체크리스트
 
 - `NEXT_PUBLIC_API_BASE_URL`이 Cloud Run HTTPS URL인지 확인합니다.
-- 백엔드 `_CORS_ALLOWED_ORIGINS`에 Vercel Production 도메인을 추가합니다.
+- 백엔드 `_CORS_ALLOWED_ORIGINS`에 Vercel Production 도메인 `https://reservation-io.vercel.app`을 추가합니다.
 - Preview 배포에서 API 테스트가 필요하면 해당 Preview URL도 CORS 허용 목록에 추가합니다.
 - 운영 백엔드는 `IS_DEV_MODE=false`로 Swagger/OpenAPI 경로가 닫혀 있어야 합니다.
 - 카카오 Redirect URI는 Vercel 도메인과 정확히 일치해야 합니다.

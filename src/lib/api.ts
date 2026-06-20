@@ -26,6 +26,15 @@ function buildApiUrl(endpoint: string): string {
   return `${base}${path}`;
 }
 
+function assertApiBaseUrl() {
+  if (!API_BASE_URL) {
+    throw new ApiRequestError(
+      0,
+      'API 서버 주소가 설정되지 않았습니다. Vercel 환경변수 NEXT_PUBLIC_API_BASE_URL을 확인해 주세요.',
+    );
+  }
+}
+
 function normalizeDetail(detail: unknown): string {
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
@@ -48,6 +57,7 @@ function normalizeDetail(detail: unknown): string {
 
 export async function api<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, isAdmin = false, skipAuth = false } = options;
+  assertApiBaseUrl();
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -69,7 +79,17 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
     config.body = JSON.stringify(body);
   }
   
-  const response = await fetch(buildApiUrl(endpoint), config);
+  let response: Response;
+  try {
+    response = await fetch(buildApiUrl(endpoint), config);
+  } catch (error) {
+    throw new ApiRequestError(
+      0,
+      error instanceof TypeError
+        ? 'API 서버와 통신할 수 없습니다. 백엔드 CORS 허용 Origin에 현재 Vercel 도메인이 포함되어 있는지 확인해 주세요.'
+        : 'API 서버와 통신할 수 없습니다.',
+    );
+  }
   
   if (!response.ok) {
     let detail = '알 수 없는 오류가 발생했습니다.';
@@ -123,6 +143,7 @@ export const apiPublicGet = <T>(endpoint: string) =>
 export function getErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     switch (error.status) {
+      case 0: return error.detail;
       case 403: return '접근 권한이 없습니다.';
       case 409: return '이미 처리된 요청입니다.';
       case 422: return error.detail;

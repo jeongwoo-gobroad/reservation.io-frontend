@@ -44,7 +44,7 @@ http://localhost:3000/oauth/kakao/callback
 git init
 git branch -M main
 git add .
-git commit -m "Initial Reservatio frontend"
+git commit -m "Initial reservation.io frontend"
 git remote add origin https://github.com/<owner>/<repo>.git
 git push -u origin main
 ```
@@ -112,6 +112,14 @@ _CORS_ALLOWED_ORIGINS=https://your-domain.vercel.app
 ```
 
 Preview URL에서 백엔드를 직접 테스트할 경우 해당 Preview URL도 허용 목록에 넣어야 합니다. 쿠키나 인증 헤더를 쓰는 요청에서는 임의 와일드카드보다 정확한 Origin 목록을 권장합니다.
+
+현재 Production 도메인을 쓰는 경우 백엔드에는 최소한 아래 Origin이 들어가야 합니다.
+
+```text
+_CORS_ALLOWED_ORIGINS=https://reservation-io.vercel.app
+```
+
+관리자 로그인에서 `Failed to fetch`가 보이면 브라우저가 백엔드 응답을 받기 전에 CORS preflight에서 막힌 것입니다. Cloud Run 백엔드가 `Disallowed CORS origin`을 반환하는지 먼저 확인하십시오.
 
 ## 7. 카카오 Redirect URI
 

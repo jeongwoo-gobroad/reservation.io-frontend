@@ -4,11 +4,11 @@ import Providers from './providers';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Reservatio - 예약 시스템',
-    template: '%s | Reservatio',
+    default: 'reservation.io - 예약 시스템',
+    template: '%s | reservation.io',
   },
   description: '카카오 로그인, 방문 확인, 관리자 운영을 위한 예약 프론트엔드',
-  applicationName: 'Reservatio',
+  applicationName: 'reservation.io',
 };
 
 export const viewport: Viewport = {
