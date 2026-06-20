@@ -18,6 +18,44 @@ interface SelectedItem {
   time_slot_uuid?: string;
 }
 
+interface ProductGroup {
+  key: string;
+  name: string;
+  purchaseLimit?: number;
+  products: Product[];
+}
+
+function getProductGroupKey(product: Product) {
+  return product.group_uuid || `${product.group_name || '상품 그룹'}-${product.group_purchase_limit ?? 'none'}`;
+}
+
+function getPositiveLimit(value: number | undefined) {
+  return typeof value === 'number' && value > 0 ? value : undefined;
+}
+
+function groupProducts(products: Product[]): ProductGroup[] {
+  const groups = new Map<string, ProductGroup>();
+
+  products.forEach((product) => {
+    const key = getProductGroupKey(product);
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.products.push(product);
+      return;
+    }
+
+    groups.set(key, {
+      key,
+      name: product.group_name?.trim() || '상품 그룹',
+      purchaseLimit: getPositiveLimit(product.group_purchase_limit),
+      products: [product],
+    });
+  });
+
+  return Array.from(groups.values());
+}
+
 export default function SchedulesPage() {
   const router = useRouter();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -82,12 +120,17 @@ export default function SchedulesPage() {
   const getSelectedItem = (scheduleUuid: string, productUuid: string) =>
     selectedItems.find((item) => item.schedule_set_uuid === scheduleUuid && item.product_uuid === productUuid);
 
+  const getSelectedGroupQuantity = (schedule: Schedule, groupKey: string) =>
+    schedule.products
+      .filter((product) => getProductGroupKey(product) === groupKey)
+      .reduce((sum, product) => sum + (getSelectedItem(schedule.uuid, product.uuid)?.quantity ?? 0), 0);
+
   const maxQuantityFor = (product: Product) => {
     const limit = product.per_user_limit && product.per_user_limit > 0 ? product.per_user_limit : product.stock_remaining;
     return Math.max(1, Math.min(product.stock_remaining, limit));
   };
 
-  const toggleProduct = (schedule: Schedule, product: Product) => {
+  const toggleProduct = (schedule: Schedule, product: Product, canAdd = true) => {
     if (product.stock_remaining <= 0) return;
 
     setSelectedItems((prev) => {
@@ -99,6 +142,7 @@ export default function SchedulesPage() {
           (item) => !(item.schedule_set_uuid === schedule.uuid && item.product_uuid === product.uuid),
         );
       }
+      if (!canAdd) return prev;
 
       const sameDateItems = activeSaleDate && activeSaleDate !== schedule.sale_date ? [] : prev;
       return [
@@ -113,11 +157,11 @@ export default function SchedulesPage() {
     });
   };
 
-  const changeQuantity = (scheduleUuid: string, product: Product, delta: number) => {
+  const changeQuantity = (scheduleUuid: string, product: Product, delta: number, maxQuantity: number) => {
     setSelectedItems((prev) =>
       prev.map((item) => {
         if (item.schedule_set_uuid !== scheduleUuid || item.product_uuid !== product.uuid) return item;
-        const nextQuantity = Math.min(maxQuantityFor(product), Math.max(1, item.quantity + delta));
+        const nextQuantity = Math.min(maxQuantity, Math.max(1, item.quantity + delta));
         return { ...item, quantity: nextQuantity };
       }),
     );
@@ -138,6 +182,15 @@ export default function SchedulesPage() {
       const schedule = schedules.find((item) => item.uuid === uuid);
       if (schedule?.has_time_slots && !selectedSlots[uuid]) {
         return '방문 시간을 선택해야 하는 일정이 있습니다.';
+      }
+      if (schedule) {
+        for (const group of groupProducts(schedule.products)) {
+          if (!group.purchaseLimit) continue;
+          const selectedQuantity = getSelectedGroupQuantity(schedule, group.key);
+          if (selectedQuantity > group.purchaseLimit) {
+            return `${group.name}은 그룹당 최대 ${group.purchaseLimit}개까지 선택할 수 있습니다.`;
+          }
+        }
       }
     }
     if (selectedScheduleUuids.length > 1) {
@@ -283,53 +336,101 @@ export default function SchedulesPage() {
                     ) : null}
 
                     <div className="surface-body product-list">
-                      {schedule.products.map((product) => {
-                        const selected = isSelected(schedule.uuid, product.uuid);
-                        const soldOut = product.stock_remaining <= 0;
-                        const item = getSelectedItem(schedule.uuid, product.uuid);
+                      {groupProducts(schedule.products).map((group) => {
+                        const groupSelectedQuantity = getSelectedGroupQuantity(schedule, group.key);
+                        const groupRemaining = group.purchaseLimit
+                          ? Math.max(0, group.purchaseLimit - groupSelectedQuantity)
+                          : Number.POSITIVE_INFINITY;
                         return (
-                          <div key={product.uuid} className={`product-choice ${selected ? 'selected' : ''}`}>
-                            <button
-                              type="button"
-                              className="product-main"
-                              disabled={soldOut || !schedule.reservation_open}
-                              onClick={() => toggleProduct(schedule, product)}
-                            >
-                              <span className="product-copy">
-                                {product.group_name ? <span className="muted">{product.group_name}</span> : null}
-                                <strong>{product.name}</strong>
-                                <span className={soldOut ? 'form-error' : 'muted'}>
-                                  {soldOut
-                                    ? '재고가 모두 소진되었습니다'
-                                    : `남은 수량 ${product.stock_remaining}${product.stock_quantity ? ` / ${product.stock_quantity}` : ''}`}
-                                </span>
-                              </span>
-                              <span className={`choice-indicator ${selected ? 'checked' : ''}`}>
-                                {selected ? <Check size={16} aria-hidden="true" /> : null}
-                              </span>
-                            </button>
-                            {selected && item ? (
-                              <div className="quantity-control" aria-label={`${product.name} 수량`}>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => changeQuantity(schedule.uuid, product, -1)}
-                                  disabled={item.quantity <= 1}
-                                >
-                                  <Minus size={15} aria-hidden="true" />
-                                </button>
-                                <strong>{item.quantity}</strong>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => changeQuantity(schedule.uuid, product, 1)}
-                                  disabled={item.quantity >= maxQuantityFor(product)}
-                                >
-                                  <Plus size={15} aria-hidden="true" />
-                                </button>
+                          <section key={group.key} className="product-group-section">
+                            <div className="product-group-heading">
+                              <div>
+                                <h4>{group.name}</h4>
+                                <p>
+                                  {group.purchaseLimit
+                                    ? `그룹당 최대 ${group.purchaseLimit}개까지 선택할 수 있습니다.`
+                                    : '이 그룹은 별도 선택 제한이 없습니다.'}
+                                </p>
                               </div>
-                            ) : null}
-                          </div>
+                              {group.purchaseLimit ? (
+                                <span className="constraint-pill">
+                                  {groupSelectedQuantity}/{group.purchaseLimit}개 선택
+                                </span>
+                              ) : null}
+                            </div>
+                            {group.products.map((product) => {
+                              const selected = isSelected(schedule.uuid, product.uuid);
+                              const soldOut = product.stock_remaining <= 0;
+                              const item = getSelectedItem(schedule.uuid, product.uuid);
+                              const productLimit = maxQuantityFor(product);
+                              const currentQuantity = item?.quantity ?? 0;
+                              const maxSelectableQuantity = selected
+                                ? Math.max(1, Math.min(productLimit, currentQuantity + groupRemaining))
+                                : Math.min(productLimit, groupRemaining);
+                              const groupLimitReached = !selected && group.purchaseLimit !== undefined && groupRemaining <= 0;
+                              const disabled = soldOut || !schedule.reservation_open || groupLimitReached;
+                              const productLimitLabel = getPositiveLimit(product.per_user_limit)
+                                ? `상품당 최대 ${product.per_user_limit}개`
+                                : `상품당 최대 ${productLimit}개`;
+                              const stockLabel = product.stock_quantity
+                                ? `남은 수량 ${product.stock_remaining} / ${product.stock_quantity}`
+                                : `남은 수량 ${product.stock_remaining}`;
+                              const availabilityLabel = soldOut
+                                ? '재고가 모두 소진되었습니다'
+                                : groupLimitReached
+                                  ? '이 그룹의 선택 제한에 도달했습니다'
+                                  : stockLabel;
+
+                              return (
+                                <div key={product.uuid} className={`product-choice ${selected ? 'selected' : ''}`}>
+                                  <button
+                                    type="button"
+                                    className="product-main"
+                                    disabled={disabled}
+                                    onClick={() => toggleProduct(schedule, product, !groupLimitReached)}
+                                  >
+                                    <span className="product-copy">
+                                      <strong>{product.name}</strong>
+                                      <span className="product-limit-list">
+                                        <span>{productLimitLabel}</span>
+                                        <span>{stockLabel}</span>
+                                      </span>
+                                      <span className={soldOut || groupLimitReached ? 'form-error' : 'muted'}>
+                                        {availabilityLabel}
+                                      </span>
+                                    </span>
+                                    <span className={`choice-indicator ${selected ? 'checked' : ''}`}>
+                                      {selected ? <Check size={16} aria-hidden="true" /> : null}
+                                    </span>
+                                  </button>
+                                  {selected && item ? (
+                                    <div className="quantity-row">
+                                      <div className="quantity-control" aria-label={`${product.name} 수량`}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary btn-sm"
+                                          onClick={() => changeQuantity(schedule.uuid, product, -1, maxSelectableQuantity)}
+                                          disabled={item.quantity <= 1}
+                                        >
+                                          <Minus size={15} aria-hidden="true" />
+                                        </button>
+                                        <strong>{item.quantity}</strong>
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary btn-sm"
+                                          onClick={() => changeQuantity(schedule.uuid, product, 1, maxSelectableQuantity)}
+                                          disabled={item.quantity >= maxSelectableQuantity}
+                                        >
+                                          <Plus size={15} aria-hidden="true" />
+                                        </button>
+                                      </div>
+                                      <span className="quantity-caption">이 상품은 최대 {maxSelectableQuantity}개까지 선택 가능</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </section>
                         );
                       })}
                     </div>

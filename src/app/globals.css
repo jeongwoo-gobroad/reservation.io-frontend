@@ -997,7 +997,37 @@ select {
 
 .product-list {
   display: grid;
+  gap: var(--space-5);
+}
+
+.product-group-section {
+  display: grid;
   gap: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.product-group-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.product-group-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.product-group-heading h4 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.product-group-heading p {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
 }
 
 .product-choice {
@@ -1014,7 +1044,7 @@ select {
 
 .product-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
   width: 100%;
@@ -1025,6 +1055,25 @@ select {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
+}
+
+.product-limit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.product-limit-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  padding: 0.12rem 0.55rem;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
 }
 
 .choice-indicator {
@@ -1043,6 +1092,13 @@ select {
   background: var(--color-accent);
 }
 
+.quantity-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .quantity-control {
   display: inline-flex;
   align-items: center;
@@ -1052,6 +1108,11 @@ select {
   border-radius: var(--radius-md);
   padding: var(--space-2);
   background: var(--color-bg-secondary);
+}
+
+.quantity-caption {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
 }
 
 .scanner-box {
@@ -1149,6 +1210,7 @@ select {
   }
 
   .section-heading,
+  .product-group-heading,
   .field-row,
   .product-editor-row,
   .inventory-row,
@@ -1156,7 +1218,8 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .section-heading {
+  .section-heading,
+  .product-group-heading {
     display: grid;
   }
 
