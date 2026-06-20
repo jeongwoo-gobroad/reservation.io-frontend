@@ -16,9 +16,9 @@
 3. `Storage` 또는 `Marketplace`에서 Redis를 생성합니다.
 4. 제공자로는 Vercel Marketplace의 Upstash Redis를 선택합니다.
 5. 생성한 Redis를 이 프로젝트에 연결합니다.
-6. 연결 후 Vercel이 주입한 환경변수에 `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`이 있는지 확인합니다.
+6. 연결 후 Vercel이 주입한 환경변수에 `REDIS_URL`이 있는지 확인합니다.
 
-예전 Vercel KV 이름으로 연결된 프로젝트라면 `KV_REST_API_URL`, `KV_REST_API_TOKEN`만 있을 수 있습니다. 현재 코드는 두 이름을 모두 지원합니다.
+현재 Vercel Redis 가이드는 `REDIS_URL`과 `redis` 패키지를 안내합니다. 예전 Vercel KV/Upstash REST 이름으로 연결된 프로젝트라면 `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` 또는 `KV_REST_API_URL`, `KV_REST_API_TOKEN`만 있을 수 있습니다. 현재 코드는 두 방식을 모두 지원합니다.
 
 ## 2. 환경변수 설정
 
@@ -29,8 +29,9 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 | `NEXT_PUBLIC_API_BASE_URL` | `/api/backend` |
 | `API_REWRITE_ORIGIN` | 실제 API 서버 주소. 예: `https://reservation-api-881902730598.asia-northeast3.run.app` |
 | `RATE_LIMIT_COUNTER` | Sliding Window Counter 기준 1초당 허용할 요청 수. 예: `8` |
-| `UPSTASH_REDIS_REST_URL` | Redis 연결 후 자동 주입된 값 |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis 연결 후 자동 주입된 값 |
+| `REDIS_URL` | Vercel Redis 연결 후 자동 주입된 값 |
+| `UPSTASH_REDIS_REST_URL` | Upstash REST 방식일 때만 필요 |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST 방식일 때만 필요 |
 
 기존 `NEXT_PUBLIC_API_BASE_URL`이 Cloud Run 주소로 직접 들어가 있으면 Vercel Proxy를 우회합니다. 반드시 `/api/backend`로 바꾸십시오.
 
@@ -50,8 +51,9 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 - 계산식: `현재 버킷 요청 수 + 직전 버킷 요청 수 * 직전 버킷 가중치`
 - 직전 버킷 가중치: 현재 1초 윈도우에서 남은 비율입니다.
 - 응답 헤더: `x-ratelimit-algorithm: sliding-window-counter`
+- 연결 확인 헤더: `x-ratelimit-store: redis-url` 또는 `x-ratelimit-store: upstash-rest`
 
-이 방식은 단순 고정 윈도우보다 경계 시점의 순간 버스트를 줄이면서, Vercel Proxy와 Redis REST 환경에서 Lua 스크립트 없이 안정적으로 동작합니다.
+이 방식은 단순 고정 윈도우보다 경계 시점의 순간 버스트를 줄이면서, Vercel Proxy와 Redis 환경에서 Lua 스크립트 없이 안정적으로 동작합니다.
 
 ## 4. 배포
 
@@ -65,8 +67,10 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 
 1. 배포된 사이트에서 개발자 도구 Network 탭을 엽니다.
 2. 예약 목록, 내 예약, 방문 확인증 요청 URL이 `/api/backend/...`로 나가는지 확인합니다.
-3. 같은 API를 Sliding Window Counter 기준 1초 안에 `RATE_LIMIT_COUNTER`보다 많이 호출하면 HTTP `429`와 `rate_limited` 응답이 나와야 합니다.
-4. 정상 사용 중 429가 잦으면 `RATE_LIMIT_COUNTER`를 올리고 재배포합니다.
+3. 응답 헤더에 `x-ratelimit-algorithm: sliding-window-counter`가 있는지 확인합니다.
+4. `x-ratelimit-store: redis-url`이면 Vercel Redis의 `REDIS_URL` 연결이 적용된 상태입니다.
+5. 같은 API를 Sliding Window Counter 기준 1초 안에 `RATE_LIMIT_COUNTER`보다 많이 호출하면 HTTP `429`와 `rate_limited` 응답이 나와야 합니다.
+6. 정상 사용 중 429가 잦으면 `RATE_LIMIT_COUNTER`를 올리고 재배포합니다.
 
 ## 6. 운영 메모
 

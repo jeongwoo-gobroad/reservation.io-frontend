@@ -88,8 +88,9 @@ Next.js CI 캐시는 `.next/cache`를 사용합니다. Vercel 배포 캐시는 V
 | `NEXT_PUBLIC_API_BASE_URL` | 브라우저 API 진입점 | `/api/backend` |
 | `API_REWRITE_ORIGIN` | Cloud Run 백엔드 주소 | `https://reservation-api-xxxx.a.run.app` |
 | `RATE_LIMIT_COUNTER` | Sliding Window Counter 기준 1초당 사용자/IP/API 조합 요청 제한 수 | `8` |
-| `UPSTASH_REDIS_REST_URL` | Vercel Redis 연결 URL | Vercel Redis 연결 후 자동 주입 |
-| `UPSTASH_REDIS_REST_TOKEN` | Vercel Redis 연결 토큰 | Vercel Redis 연결 후 자동 주입 |
+| `REDIS_URL` | Vercel Redis 연결 문자열 | Vercel Redis 연결 후 자동 주입 |
+| `UPSTASH_REDIS_REST_URL` | Upstash REST 방식 연결 URL | REST 방식일 때만 필요 |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST 방식 연결 토큰 | REST 방식일 때만 필요 |
 | `NEXT_PUBLIC_KAKAO_REST_API_KEY` | 카카오 REST API 키 | `abc123...` |
 | `NEXT_PUBLIC_KAKAO_REDIRECT_URI` | 카카오 OAuth 콜백 | `https://your-domain.vercel.app/oauth/kakao/callback` |
 | `NEXT_PUBLIC_COMPANY_URL` | 푸터 회사 링크 | `https://your-company.example` |

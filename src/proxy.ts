@@ -1,18 +1,53 @@
 import { Redis } from '@upstash/redis';
+import { createClient, type RedisClientType } from 'redis';
 import { NextResponse, type NextRequest } from 'next/server';
 
-let redisClient: Redis | null | undefined;
+interface RateLimitRedisClient {
+  provider: 'upstash-rest' | 'redis-url';
+  get: (key: string) => Promise<unknown>;
+  incr: (key: string) => Promise<number>;
+  expire: (key: string, seconds: number) => Promise<unknown>;
+}
+
+let redisClient: Promise<RateLimitRedisClient | null> | undefined;
+let nodeRedisClient: RedisClientType | undefined;
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_KEY_TTL_SECONDS = 3;
 
-function getRedisClient() {
+async function getRedisClient() {
   if (redisClient !== undefined) return redisClient;
 
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-
-  redisClient = url && token ? new Redis({ url, token }) : null;
+  redisClient = createRedisClient();
   return redisClient;
+}
+
+async function createRedisClient(): Promise<RateLimitRedisClient | null> {
+  const restUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const restToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+
+  if (restUrl && restToken) {
+    const restRedis = new Redis({ url: restUrl, token: restToken });
+    return {
+      provider: 'upstash-rest',
+      get: (key) => restRedis.get(key),
+      incr: (key) => restRedis.incr(key),
+      expire: (key, seconds) => restRedis.expire(key, seconds),
+    };
+  }
+
+  if (process.env.REDIS_URL) {
+    nodeRedisClient = createClient({ url: process.env.REDIS_URL });
+    nodeRedisClient.on('error', () => undefined);
+    await nodeRedisClient.connect();
+    return {
+      provider: 'redis-url',
+      get: (key) => nodeRedisClient?.get(key) ?? Promise.resolve(null),
+      incr: (key) => nodeRedisClient?.incr(key) ?? Promise.resolve(0),
+      expire: (key, seconds) => nodeRedisClient?.expire(key, seconds) ?? Promise.resolve(false),
+    };
+  }
+
+  return null;
 }
 
 function getClientIp(request: NextRequest) {
@@ -47,7 +82,7 @@ async function actorKey(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
-  const redis = getRedisClient();
+  const redis = await getRedisClient().catch(() => null);
   if (!redis) return NextResponse.next();
 
   const limit = getRateLimitCounter();
@@ -79,6 +114,7 @@ export async function proxy(request: NextRequest) {
       'x-ratelimit-remaining': String(Math.max(0, Math.floor(limit - estimatedCount))),
       'x-ratelimit-reset': String(Math.ceil(resetAtMs / 1000)),
       'x-ratelimit-algorithm': 'sliding-window-counter',
+      'x-ratelimit-store': redis.provider,
     });
 
     if (estimatedCount > limit) {
