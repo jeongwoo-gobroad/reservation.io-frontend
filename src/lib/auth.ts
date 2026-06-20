@@ -4,8 +4,8 @@ const USER_INFO_KEY = 'reservatio_user_info';
 
 export interface UserInfo {
   user_uuid: string;
-  kakao_id: string;
-  nickname: string;
+  kakao_id?: string;
+  nickname?: string;
 }
 
 // User token

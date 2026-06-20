@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiGet, apiPost, getErrorMessage } from '@/lib/api';
 import { getUserInfo, isUserLoggedIn } from '@/lib/auth';
 import { formatSaleDate } from '@/lib/format';
-import type { Product, Schedule, SettingValue } from '@/lib/types';
+import type { Product, Schedule, SettingValue, UserReservation } from '@/lib/types';
 import AppShell from '@/components/Layout/AppShell';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import MarkdownViewer from '@/components/common/MarkdownViewer';
@@ -56,14 +56,24 @@ function groupProducts(products: Product[]): ProductGroup[] {
   return Array.from(groups.values());
 }
 
+function reservationScheduleUuid(reservation: UserReservation) {
+  return reservation.schedule_set_uuid || reservation.items?.find((item) => item.schedule_set_uuid)?.schedule_set_uuid || '';
+}
+
+function isCompletedReservationStatus(status?: string) {
+  return status === 'visited' || status === 'no_show';
+}
+
 export default function SchedulesPage() {
   const router = useRouter();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [myReservations, setMyReservations] = useState<UserReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<Record<string, string>>({});
   const [agreementContent, setAgreementContent] = useState('');
   const [showAgreement, setShowAgreement] = useState(false);
+  const [checkingAgreement, setCheckingAgreement] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -72,8 +82,12 @@ export default function SchedulesPage() {
   const fetchSchedules = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiGet<Schedule[]>('/schedules/open');
-      setSchedules(data);
+      const [scheduleData, reservationData] = await Promise.all([
+        apiGet<Schedule[]>('/schedules/open'),
+        apiGet<UserReservation[]>('/users/me/reservations').catch(() => []),
+      ]);
+      setSchedules(scheduleData);
+      setMyReservations(reservationData);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -113,6 +127,15 @@ export default function SchedulesPage() {
   );
 
   const selectedProductCount = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  const completedScheduleUuids = useMemo(() => {
+    return new Set(
+      myReservations
+        .filter((reservation) => isCompletedReservationStatus(reservation.status))
+        .map(reservationScheduleUuid)
+        .filter(Boolean),
+    );
+  }, [myReservations]);
 
   const isSelected = (scheduleUuid: string, productUuid: string) =>
     selectedItems.some((item) => item.schedule_set_uuid === scheduleUuid && item.product_uuid === productUuid);
@@ -206,7 +229,10 @@ export default function SchedulesPage() {
   const reserveBlocker = getReserveBlocker();
 
   const handleReserve = async () => {
+    if (checkingAgreement || submitting) return;
     setError('');
+    setCheckingAgreement(true);
+    let shouldSubmit = false;
     try {
       const data = await apiGet<SettingValue>('/settings/reservation_agreement_markdown');
       if (data.value) {
@@ -214,10 +240,21 @@ export default function SchedulesPage() {
         setShowAgreement(true);
         return;
       }
-    } catch {
+      shouldSubmit = true;
+    } catch (err) {
+      const message = getErrorMessage(err);
+      if (message.includes('요청을 처리 중')) {
+        setError(message);
+        return;
+      }
       // The backend can omit an optional agreement; reservation still goes through.
+      shouldSubmit = true;
+    } finally {
+      setCheckingAgreement(false);
     }
-    submitReservation();
+    if (shouldSubmit) {
+      void submitReservation();
+    }
   };
 
   const submitReservation = async () => {
@@ -301,9 +338,11 @@ export default function SchedulesPage() {
                       <div>
                         <h3>{schedule.title}</h3>
                         <p className="muted">
-                          {schedule.can_bundle
-                            ? '같은 날짜의 다른 일정과 함께 예약할 수 있습니다.'
-                            : '이 일정은 단독 예약만 가능합니다.'}
+                          {completedScheduleUuids.has(schedule.uuid)
+                            ? '이미 수령 완료 또는 노쇼 처리된 일정이라 다시 예약할 수 없습니다.'
+                            : schedule.can_bundle
+                              ? '같은 날짜의 다른 일정과 함께 예약할 수 있습니다.'
+                              : '이 일정은 단독 예약만 가능합니다.'}
                         </p>
                       </div>
                       <span className={`badge ${schedule.reservation_open ? 'badge-success' : 'badge-warning'}`}>
@@ -368,7 +407,8 @@ export default function SchedulesPage() {
                                 ? Math.max(1, Math.min(productLimit, currentQuantity + groupRemaining))
                                 : Math.min(productLimit, groupRemaining);
                               const groupLimitReached = !selected && group.purchaseLimit !== undefined && groupRemaining <= 0;
-                              const disabled = soldOut || !schedule.reservation_open || groupLimitReached;
+                              const completedBlocked = completedScheduleUuids.has(schedule.uuid);
+                              const disabled = soldOut || !schedule.reservation_open || groupLimitReached || completedBlocked;
                               const productLimitLabel = getPositiveLimit(product.per_user_limit)
                                 ? `상품당 최대 ${product.per_user_limit}개`
                                 : `상품당 최대 ${productLimit}개`;
@@ -377,7 +417,9 @@ export default function SchedulesPage() {
                                 : `남은 수량 ${product.stock_remaining}`;
                               const availabilityLabel = soldOut
                                 ? '재고가 모두 소진되었습니다'
-                                : groupLimitReached
+                                : completedBlocked
+                                  ? '이미 수령 완료 또는 노쇼 처리된 일정입니다'
+                                  : groupLimitReached
                                   ? '이 그룹의 선택 제한에 도달했습니다'
                                   : stockLabel;
 
@@ -450,9 +492,9 @@ export default function SchedulesPage() {
               type="button"
               className="btn btn-primary btn-block btn-lg"
               onClick={handleReserve}
-              disabled={Boolean(reserveBlocker) || submitting}
+              disabled={Boolean(reserveBlocker) || checkingAgreement || submitting}
             >
-              {submitting ? '예약 처리 중...' : `${selectedProductCount}개 상품 예약하기`}
+              {checkingAgreement ? '확인 중...' : submitting ? '예약 처리 중...' : `${selectedProductCount}개 상품 예약하기`}
             </button>
           </div>
         </div>

@@ -6,6 +6,7 @@ import { AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { setUserToken, setUserInfo } from '@/lib/auth';
 import { KAKAO_REDIRECT_URI } from '@/lib/constants';
+import type { BlockStatus } from '@/lib/types';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Footer from '@/components/Layout/Footer';
 
@@ -47,6 +48,12 @@ function KakaoCallbackContent() {
           kakao_id: data.kakao_id,
           nickname: data.nickname,
         });
+
+        const blockStatus = await api<BlockStatus>('/users/me/block-status');
+        if (blockStatus.blocked) {
+          router.replace('/blocked');
+          return;
+        }
 
         router.replace(data.nickname ? '/disclaimer' : '/nickname');
       } catch (err) {

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -12,8 +13,10 @@ import {
   UserRound,
 } from 'lucide-react';
 import Footer from '@/components/Layout/Footer';
-import { logoutAdmin, logoutUser } from '@/lib/auth';
+import { apiGet } from '@/lib/api';
+import { getUserInfo, isUserLoggedIn, logoutAdmin, logoutUser, setUserInfo } from '@/lib/auth';
 import { SERVICE_NAME } from '@/lib/constants';
+import type { UserProfile } from '@/lib/types';
 
 interface ShellAction {
   href: string;
@@ -57,6 +60,32 @@ export default function AppShell({
   const pathname = usePathname();
   const nav = variant === 'admin' ? adminNav : userNav;
   const logout = variant === 'admin' ? logoutAdmin : logoutUser;
+  const [nickname, setNickname] = useState('');
+  const [hasUserSession, setHasUserSession] = useState(false);
+
+  useEffect(() => {
+    if (variant !== 'user') return;
+
+    void Promise.resolve().then(async () => {
+      const loggedIn = isUserLoggedIn();
+      setHasUserSession(loggedIn);
+      if (!loggedIn) return;
+      const cached = getUserInfo();
+      setNickname(cached?.nickname || '');
+
+      try {
+        const profile = await apiGet<UserProfile>('/users/me');
+        setNickname(profile.nickname || '');
+        setUserInfo({
+          user_uuid: profile.user_uuid,
+          kakao_id: profile.kakao_id,
+          nickname: profile.nickname || '',
+        });
+      } catch {
+        // The auth guard and API client handle expired tokens globally.
+      }
+    });
+  }, [variant]);
 
   return (
     <div className={`app-shell app-shell-${variant}`}>
@@ -68,10 +97,18 @@ export default function AppShell({
           </Link>
           {variant === 'admin' && <span className="brand-tag">운영 콘솔</span>}
         </div>
-        <button type="button" className="icon-text-button" onClick={logout}>
-          <LogOut size={18} aria-hidden="true" />
-          <span>로그아웃</span>
-        </button>
+        <div className="topbar-actions">
+          {variant === 'user' && hasUserSession ? (
+            <span className="user-chip" title={nickname || '닉네임 미설정'}>
+              <UserRound size={16} aria-hidden="true" />
+              <span>{nickname ? `${nickname}님` : '닉네임 미설정'}</span>
+            </span>
+          ) : null}
+          <button type="button" className="icon-text-button" onClick={logout}>
+            <LogOut size={18} aria-hidden="true" />
+            <span>로그아웃</span>
+          </button>
+        </div>
       </header>
 
       <nav className="rail-nav" aria-label={variant === 'admin' ? '관리자 메뉴' : '이용자 메뉴'}>

@@ -378,6 +378,33 @@ select {
   font-weight: var(--font-bold);
 }
 
+.topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 38px;
+  max-width: 220px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.user-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .brand-tag {
   border-left: 1px solid var(--color-border);
   padding-left: var(--space-3);
@@ -1402,6 +1429,10 @@ select {
     align-items: flex-start;
   }
 
+  .topbar-actions {
+    align-items: stretch;
+  }
+
   .brand-tag {
     display: none;
   }
@@ -1465,8 +1496,15 @@ select {
 
 @media (max-width: 520px) {
   .rail-link span,
-  .icon-text-button span {
+  .icon-text-button span,
+  .user-chip span {
     display: none;
+  }
+
+  .user-chip {
+    width: 38px;
+    padding-inline: 0;
+    justify-content: center;
   }
 
   .shell-main,

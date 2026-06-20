@@ -11,14 +11,23 @@ interface ApiOptions {
 export class ApiRequestError extends Error {
   status: number;
   detail: string;
+  code?: string;
+  rawDetail?: unknown;
   
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, code?: string, rawDetail?: unknown) {
     super(detail);
     this.status = status;
     this.detail = detail;
+    this.code = code;
+    this.rawDetail = rawDetail;
     this.name = 'ApiRequestError';
   }
 }
+
+const REQUEST_COOLDOWN_MS = 450;
+const MUTATION_COOLDOWN_MS = 650;
+const inFlightRequests = new Set<string>();
+const requestCooldowns = new Map<string, number>();
 
 function buildApiUrl(endpoint: string): string {
   const base = API_BASE_URL.replace(/\/$/, '');
@@ -50,14 +59,52 @@ function normalizeDetail(detail: unknown): string {
       .join('\n') || '입력 값을 다시 확인해 주세요.';
   }
   if (detail && typeof detail === 'object') {
+    if ('message' in detail) {
+      return String((detail as { message: unknown }).message);
+    }
+    if ('detail' in detail) {
+      return normalizeDetail((detail as { detail: unknown }).detail);
+    }
     return JSON.stringify(detail);
   }
   return '알 수 없는 오류가 발생했습니다.';
 }
 
+function detailCode(detail: unknown): string | undefined {
+  if (!detail || typeof detail !== 'object' || !('code' in detail)) return undefined;
+  return String((detail as { code: unknown }).code);
+}
+
+function requestKey(endpoint: string, method: string, isAdmin: boolean, body: unknown) {
+  return `${isAdmin ? 'admin' : 'user'}:${method}:${endpoint}:${body ? JSON.stringify(body) : ''}`;
+}
+
+function guardRepeatedRequest(key: string, method: string) {
+  const now = Date.now();
+  const cooldownUntil = requestCooldowns.get(key) || 0;
+  if (inFlightRequests.has(key) || cooldownUntil > now) {
+    throw new ApiRequestError(0, '요청을 처리 중입니다. 잠시 후 다시 시도해 주세요.');
+  }
+  inFlightRequests.add(key);
+  requestCooldowns.set(key, now + (method === 'GET' ? REQUEST_COOLDOWN_MS : MUTATION_COOLDOWN_MS));
+}
+
+function releaseRequest(key: string) {
+  inFlightRequests.delete(key);
+}
+
+function redirectIfBlocked(code: string | undefined) {
+  if (code !== 'ip_banned' || typeof window === 'undefined') return;
+  if (window.location.pathname !== '/blocked') {
+    window.location.href = '/blocked';
+  }
+}
+
 export async function api<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, isAdmin = false, skipAuth = false } = options;
   assertApiBaseUrl();
+  const key = requestKey(endpoint, method, isAdmin, body);
+  guardRepeatedRequest(key, method);
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -89,16 +136,23 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
         ? 'API 서버와 통신할 수 없습니다. 백엔드 CORS 허용 Origin에 현재 Vercel 도메인이 포함되어 있는지 확인해 주세요.'
         : 'API 서버와 통신할 수 없습니다.',
     );
+  } finally {
+    releaseRequest(key);
   }
   
   if (!response.ok) {
     let detail = '알 수 없는 오류가 발생했습니다.';
+    let code: string | undefined;
+    let rawDetail: unknown;
     try {
       const errorData = await response.json();
-      detail = normalizeDetail(errorData.detail || detail);
+      rawDetail = errorData.detail || detail;
+      code = detailCode(rawDetail);
+      detail = normalizeDetail(rawDetail);
     } catch {
       // ignore parse error
     }
+    redirectIfBlocked(code);
     
     // Handle specific status codes
     if (response.status === 401) {
@@ -109,7 +163,7 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
       }
     }
     
-    throw new ApiRequestError(response.status, detail);
+    throw new ApiRequestError(response.status, detail, code, rawDetail);
   }
   
   // Handle 204 No Content
@@ -144,7 +198,7 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     switch (error.status) {
       case 0: return error.detail;
-      case 403: return '접근 권한이 없습니다.';
+      case 403: return error.detail || '접근 권한이 없습니다.';
       case 409: return '이미 처리된 요청입니다.';
       case 422: return error.detail;
       default: return error.detail;
