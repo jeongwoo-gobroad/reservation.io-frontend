@@ -25,6 +25,11 @@ interface ProductGroup {
   products: Product[];
 }
 
+interface NoticeModal {
+  title: string;
+  message: string;
+}
+
 function getProductGroupKey(product: Product) {
   return product.group_uuid || `${product.group_name || '상품 그룹'}-${product.group_purchase_limit ?? 'none'}`;
 }
@@ -64,6 +69,10 @@ function isCompletedReservationStatus(status?: string) {
   return status === 'visited' || status === 'no_show';
 }
 
+function isSameDateReservationError(message: string) {
+  return message.includes('같은 날짜') && message.includes('예약');
+}
+
 export default function SchedulesPage() {
   const router = useRouter();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -77,6 +86,7 @@ export default function SchedulesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [noticeModal, setNoticeModal] = useState<NoticeModal | null>(null);
   const userInfo = typeof window !== 'undefined' ? getUserInfo() : null;
 
   const fetchSchedules = useCallback(async () => {
@@ -275,7 +285,16 @@ export default function SchedulesPage() {
       setSelectedSlots({});
       fetchSchedules();
     } catch (err) {
-      setError(getErrorMessage(err));
+      const message = getErrorMessage(err);
+      if (isSameDateReservationError(message)) {
+        setNoticeModal({
+          title: '이미 같은 날짜의 예약이 있습니다.',
+          message: '내 예약에서 기존 예약을 수정하거나 필요한 경우 취소할 수 있습니다.',
+        });
+        setError('');
+      } else {
+        setError(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -517,6 +536,31 @@ export default function SchedulesPage() {
           </div>
         </>
       )}
+
+      {noticeModal ? (
+        <>
+          <div className="overlay" onClick={() => setNoticeModal(null)} />
+          <div className="modal animate-scale-in" role="dialog" aria-modal="true" aria-labelledby="schedule-notice-title">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">예약 안내</p>
+                <h3 id="schedule-notice-title">{noticeModal.title}</h3>
+              </div>
+            </div>
+            <div className="modal-body">
+              <div className="message message-warning">
+                <AlertCircle size={18} aria-hidden="true" />
+                <span>{noticeModal.message}</span>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-primary" onClick={() => setNoticeModal(null)}>
+                확인
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </AppShell>
   );
 }

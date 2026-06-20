@@ -201,6 +201,7 @@ export function getErrorMessage(error: unknown): string {
       case 0: return error.detail;
       case 403: return error.detail || '접근 권한이 없습니다.';
       case 409: return '이미 처리된 요청입니다.';
+      case 429: return error.detail || '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.';
       case 422: return error.detail;
       default: return error.detail;
     }

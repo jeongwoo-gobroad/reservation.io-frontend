@@ -59,7 +59,30 @@ export interface UserReservation {
 
 export interface VisitToken {
   reservation_uuid: string;
+  sale_date?: string;
+  schedule_set_uuid?: string;
+  schedule_title?: string;
+  product_name?: string;
+  quantity?: number;
+  time_slot_label?: string;
   qr_hash: string;
+  expires_in_seconds: number;
+  hash_window?: string;
+}
+
+export interface VisitTokenResponse {
+  tokens: VisitToken[];
+  message?: string;
+}
+
+export interface ManualVisitCode {
+  reservation_uuid: string;
+  sale_date?: string;
+  schedule_set_uuid?: string;
+  schedule_title?: string;
+  product_name?: string;
+  quantity?: number;
+  time_slot_label?: string;
   manual_code: string;
   expires_in_seconds: number;
   hash_window?: string;

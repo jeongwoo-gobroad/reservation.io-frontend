@@ -85,7 +85,11 @@ Next.js CI 캐시는 `.next/cache`를 사용합니다. Vercel 배포 캐시는 V
 
 | 변수명 | 설명 | 예시 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | Cloud Run 백엔드 주소 | `https://reservation-api-xxxx.a.run.app` |
+| `NEXT_PUBLIC_API_BASE_URL` | 브라우저 API 진입점 | `/api/backend` |
+| `API_REWRITE_ORIGIN` | Cloud Run 백엔드 주소 | `https://reservation-api-xxxx.a.run.app` |
+| `RATE_LIMIT_COUNTER` | Sliding Window Counter 기준 1초당 사용자/IP/API 조합 요청 제한 수 | `8` |
+| `UPSTASH_REDIS_REST_URL` | Vercel Redis 연결 URL | Vercel Redis 연결 후 자동 주입 |
+| `UPSTASH_REDIS_REST_TOKEN` | Vercel Redis 연결 토큰 | Vercel Redis 연결 후 자동 주입 |
 | `NEXT_PUBLIC_KAKAO_REST_API_KEY` | 카카오 REST API 키 | `abc123...` |
 | `NEXT_PUBLIC_KAKAO_REDIRECT_URI` | 카카오 OAuth 콜백 | `https://your-domain.vercel.app/oauth/kakao/callback` |
 | `NEXT_PUBLIC_COMPANY_URL` | 푸터 회사 링크 | `https://your-company.example` |
@@ -94,8 +98,10 @@ Next.js CI 캐시는 `.next/cache`를 사용합니다. Vercel 배포 캐시는 V
 주의:
 
 - `NEXT_PUBLIC_*` 값은 빌드 시점에 브라우저 번들에 포함됩니다.
+- `NEXT_PUBLIC_API_BASE_URL`이 Cloud Run 주소를 직접 가리키면 Vercel Proxy Rate Limit을 우회합니다.
 - Production과 Preview 환경변수를 각각 확인하십시오.
 - 백엔드 비밀값은 이 프론트엔드 저장소나 Vercel 공개 환경변수에 넣지 않습니다.
+- Redis와 Rate Limit 설정의 자세한 절차는 `docs/do_vercel.md`를 따르십시오.
 
 ## 6. 백엔드 CORS 설정
 

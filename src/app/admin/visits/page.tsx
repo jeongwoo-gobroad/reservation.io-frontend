@@ -9,6 +9,8 @@ import type { AdminReservation, RecentVisit, VisitScanResult } from '@/lib/types
 import AppShell from '@/components/Layout/AppShell';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 
+type ScanTokenType = 'qr' | 'manual';
+
 function extractReservations(result: VisitScanResult | null): AdminReservation[] {
   if (!result) return [];
   if (result.reservations?.length) return result.reservations;
@@ -22,6 +24,7 @@ export default function AdminVisitsPage() {
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
   const [manualToken, setManualToken] = useState('');
   const [scanResult, setScanResult] = useState<VisitScanResult | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [recent, setRecent] = useState<RecentVisit[]>([]);
   const [recentLimit, setRecentLimit] = useState(10);
   const [recentOffset, setRecentOffset] = useState(0);
@@ -75,10 +78,10 @@ export default function AdminVisitsPage() {
     };
   }, [stopScanner]);
 
-  const scanToken = async (token: string) => {
+  const scanToken = async (token: string, tokenType: ScanTokenType) => {
     const normalized = token.trim();
     if (!normalized) {
-      setError('QR 또는 수동 코드를 입력해 주세요.');
+      setError(tokenType === 'qr' ? 'QR 값을 읽지 못했습니다.' : '수동 코드를 입력해 주세요.');
       return;
     }
 
@@ -88,11 +91,12 @@ export default function AdminVisitsPage() {
     try {
       const data = await apiPost<VisitScanResult>('/admin/visits/scan', {
         token: normalized,
-        token_type: 'auto',
+        token_type: tokenType,
       }, true);
       setScanResult(data);
+      setConfirmOpen(true);
       setManualToken('');
-      setMessage('방문 확인 정보를 찾았습니다. 상품 제공 후 완료 처리해 주세요.');
+      setMessage('방문 확인 정보를 찾았습니다. 품목 전달 후 수령 완료를 눌러 주세요.');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -113,7 +117,7 @@ export default function AdminVisitsPage() {
         { fps: 10, qrbox: { width: 240, height: 240 } },
         async (decodedText) => {
           await stopScanner();
-          scanToken(decodedText);
+          await scanToken(decodedText, 'qr');
         },
         () => undefined,
       );
@@ -133,9 +137,10 @@ export default function AdminVisitsPage() {
     setError('');
     try {
       await apiPost('/admin/visits/complete', { reservation_uuids: reservationUuids }, true);
-      setMessage('제공 완료 처리되었습니다.');
+      setMessage('수령 완료 처리되었습니다.');
       setScanResult(null);
-      loadRecent(0, false);
+      setConfirmOpen(false);
+      await loadRecent(0, false);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -195,11 +200,11 @@ export default function AdminVisitsPage() {
             className="surface-body stack"
             onSubmit={(event) => {
               event.preventDefault();
-              scanToken(manualToken);
+              scanToken(manualToken, 'manual');
             }}
           >
             <div className="form-group">
-              <label className="form-label" htmlFor="manual-token">수동 코드 또는 QR 값</label>
+              <label className="form-label" htmlFor="manual-token">수동 코드</label>
               <input
                 id="manual-token"
                 value={manualToken}
@@ -215,43 +220,6 @@ export default function AdminVisitsPage() {
             {error && <div className="message message-error">{error}</div>}
             {message && <div className="message message-success">{message}</div>}
           </form>
-        </section>
-
-        <section className="surface span-12">
-          <div className="surface-header">
-            <div>
-              <p className="eyebrow">결과</p>
-              <h2>확인된 예약</h2>
-            </div>
-          </div>
-          <div className="surface-body">
-            {reservations.length === 0 ? (
-              <div className="empty-state">
-                <strong>아직 확인된 예약이 없습니다.</strong>
-                <span>QR 스캔 또는 수동 코드 입력 후 이곳에 표시됩니다.</span>
-              </div>
-            ) : (
-              <div className="stack">
-                {reservations.map((reservation) => (
-                  <div key={reservationKey(reservation)} className="list-row">
-                    <div className="row-main">
-                      <p className="row-title">{reservation.nickname || scanResult?.nickname || '고객'}</p>
-                      <div className="row-meta">
-                        <span>{formatSaleDate(reservation.sale_date)}</span>
-                        {reservation.schedule_title ? <span>{reservation.schedule_title}</span> : null}
-                        {reservation.product_name ? <span>{reservation.product_name}</span> : null}
-                        {reservation.time_slot_label ? <span>방문 시간 {reservation.time_slot_label}</span> : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-success btn-block" onClick={completeVisit} disabled={submitting}>
-                  <CheckCircle2 size={17} aria-hidden="true" />
-                  제공 완료
-                </button>
-              </div>
-            )}
-          </div>
         </section>
 
         <section className="surface span-12">
@@ -311,6 +279,74 @@ export default function AdminVisitsPage() {
           </div>
         </section>
       </div>
+
+      {confirmOpen && scanResult ? (
+        <>
+          <div
+            className="overlay"
+            onClick={() => {
+              setConfirmOpen(false);
+              setScanResult(null);
+            }}
+          />
+          <div className="modal animate-scale-in" role="dialog" aria-modal="true" aria-labelledby="visit-confirm-title">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">수령 확인</p>
+                <h3 id="visit-confirm-title">품목을 전달했나요?</h3>
+              </div>
+            </div>
+            <div className="modal-body stack">
+              <p className="muted">아래 품목을 고객에게 전달한 뒤 수령 완료를 눌러 주세요.</p>
+              {reservations.length === 0 ? (
+                <div className="empty-state">
+                  <strong>확인된 예약이 없습니다.</strong>
+                  <span>다시 스캔하거나 수동 코드를 확인해 주세요.</span>
+                </div>
+              ) : (
+                <div className="visit-confirm-list">
+                  {reservations.map((reservation, index) => (
+                    <div key={reservationKey(reservation) || index} className="visit-confirm-item">
+                      <div>
+                        <strong>{reservation.product_name || '예약 상품'}</strong>
+                        <span>{reservation.quantity ? `${reservation.quantity}개` : '수량 확인 필요'}</span>
+                      </div>
+                      <div className="row-meta">
+                        <span>{reservation.nickname || scanResult.nickname || '고객'}</span>
+                        <span>{formatSaleDate(reservation.sale_date)}</span>
+                        {reservation.schedule_title ? <span>{reservation.schedule_title}</span> : null}
+                        {reservation.time_slot_label ? <span>방문 시간 {reservation.time_slot_label}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setScanResult(null);
+                }}
+                disabled={submitting}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="btn btn-success"
+                onClick={completeVisit}
+                disabled={submitting || reservations.length === 0}
+              >
+                <CheckCircle2 size={17} aria-hidden="true" />
+                수령 완료
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </AppShell>
   );
 }

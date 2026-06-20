@@ -22,7 +22,7 @@ const labels: Record<SettingKey, { title: string; description: string }> = {
   },
   blocked_user_message_markdown: {
     title: '접속 제한 안내문',
-    description: '자동 반복 요청 차단 또는 IP 제한 시 손님에게 보여줄 안내입니다.',
+    description: 'IP 제한 시 손님에게 보여줄 안내입니다.',
   },
 };
 

@@ -172,7 +172,7 @@ export default function AdminIpBansPage() {
             ) : filteredItems.length === 0 ? (
               <div className="empty-state">
                 <strong>{items.length === 0 ? '제한된 IP가 없습니다.' : '검색 결과가 없습니다.'}</strong>
-                <span>관리자 로그인 실패, 자동 반복 요청 차단, 수동 등록 시 표시됩니다.</span>
+                <span>관리자 로그인 실패 또는 수동 등록 시 표시됩니다.</span>
               </div>
             ) : (
               <div className="table-wrap">

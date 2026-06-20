@@ -260,20 +260,66 @@
 
 ### GET `/users/me/visit-tokens`
 
-오늘 예약에 대한 방문 확인 QR 해시와 수동 코드를 발급합니다.
+오늘 예약에 대한 방문 확인 QR 해시를 발급합니다. 수동 코드는 별도 API로 필요한 순간에만 발급합니다.
 
 응답:
 
 ```json
-[
-  {
-    "reservation_uuid": "reservation-uuid",
-    "qr_hash": "b6fc4c620b67d95f953a5c1c1230aaab",
-    "manual_code": "a1b2c3d4e5f6",
-    "expires_in_seconds": 18,
-    "hash_window": "t-1,t,t+1"
-  }
-]
+{
+  "tokens": [
+    {
+      "reservation_uuid": "reservation-uuid",
+      "sale_date": "2026-07-01",
+      "schedule_set_uuid": "schedule-uuid",
+      "schedule_title": "1차 예약",
+      "product_name": "확장팩 1박스",
+      "quantity": 1,
+      "time_slot_label": "14:00",
+      "qr_hash": "b6fc4c620b67d95f953a5c1c1230aaab",
+      "expires_in_seconds": 18,
+      "hash_window": "t-1,t,t+1"
+    }
+  ],
+  "message": ""
+}
+```
+
+당일 방문 확인증이 없을 때:
+
+```json
+{
+  "tokens": [],
+  "message": "방문 확인 코드는 예약 당일에만 발급됩니다."
+}
+```
+
+### POST `/users/me/visit-manual-code`
+
+QR 인식이 어려운 경우에만 수동 코드를 발급합니다.
+
+요청:
+
+```json
+{
+  "reservation_uuid": "reservation-uuid"
+}
+```
+
+응답:
+
+```json
+{
+  "reservation_uuid": "reservation-uuid",
+  "sale_date": "2026-07-01",
+  "schedule_set_uuid": "schedule-uuid",
+  "schedule_title": "1차 예약",
+  "product_name": "확장팩 1박스",
+  "quantity": 1,
+  "time_slot_label": "14:00",
+  "manual_code": "a1b2c3d4e5f6",
+  "expires_in_seconds": 18,
+  "hash_window": "t-1,t,t+1"
+}
 ```
 
 알고리즘:
@@ -293,15 +339,15 @@ QR 해시 또는 수동 코드를 검증합니다.
 ```json
 {
   "token": "b6fc4c620b67d95f953a5c1c1230aaab",
-  "token_type": "auto"
+  "token_type": "qr"
 }
 ```
 
 `token_type`:
 
-- `auto`: QR/수동 코드 모두 대조
 - `qr`: QR 해시만 대조
 - `manual`: 수동 코드만 대조
+- `auto`: 하위 호환용. 프론트엔드는 QR 스캔 시 `qr`, 수동 코드 입력 시 `manual`을 보냅니다.
 
 ### POST `/admin/visits/complete`
 
