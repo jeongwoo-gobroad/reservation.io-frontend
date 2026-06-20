@@ -12,6 +12,15 @@ import MarkdownViewer from '@/components/common/MarkdownViewer';
 
 const fallbackMessage = '현재 접속이 제한되어 있습니다. 매장 관리자에게 문의해 주세요.';
 
+async function fetchBlockedMessageFallback() {
+  try {
+    const setting = await apiPublicGet<SettingValue>('/settings/blocked_user_message_markdown');
+    return setting.value || fallbackMessage;
+  } catch {
+    return fallbackMessage;
+  }
+}
+
 export default function BlockedPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -27,24 +36,16 @@ export default function BlockedPage() {
         if (isUserLoggedIn()) {
           const status = await apiGet<BlockStatus>('/users/me/block-status');
           setNickname(status.nickname || cached?.nickname || '');
-          if (status.message_markdown) {
-            setMessage(status.message_markdown);
-          }
+          setMessage(status.message_markdown || (await fetchBlockedMessageFallback()));
           if (!status.blocked) {
             router.replace('/schedules');
             return;
           }
         } else {
-          const setting = await apiPublicGet<SettingValue>('/settings/blocked_user_message_markdown');
-          setMessage(setting.value || fallbackMessage);
+          setMessage(await fetchBlockedMessageFallback());
         }
       } catch {
-        try {
-          const setting = await apiPublicGet<SettingValue>('/settings/blocked_user_message_markdown');
-          setMessage(setting.value || fallbackMessage);
-        } catch {
-          setMessage(fallbackMessage);
-        }
+        setMessage(await fetchBlockedMessageFallback());
       } finally {
         setLoading(false);
       }

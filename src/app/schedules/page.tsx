@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Check, Minus, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { apiGet, apiPost, getErrorMessage } from '@/lib/api';
+import { apiGet, apiPost, apiPublicGet, getErrorMessage } from '@/lib/api';
 import { getUserInfo, isUserLoggedIn } from '@/lib/auth';
 import { formatSaleDate } from '@/lib/format';
 import type { Product, Schedule, SettingValue, UserReservation } from '@/lib/types';
@@ -234,7 +234,7 @@ export default function SchedulesPage() {
     setCheckingAgreement(true);
     let shouldSubmit = false;
     try {
-      const data = await apiGet<SettingValue>('/settings/reservation_agreement_markdown');
+      const data = await apiPublicGet<SettingValue>('/settings/reservation_agreement_markdown');
       if (data.value) {
         setAgreementContent(data.value);
         setShowAgreement(true);
@@ -243,12 +243,8 @@ export default function SchedulesPage() {
       shouldSubmit = true;
     } catch (err) {
       const message = getErrorMessage(err);
-      if (message.includes('요청을 처리 중')) {
-        setError(message);
-        return;
-      }
-      // The backend can omit an optional agreement; reservation still goes through.
-      shouldSubmit = true;
+      setError(`예약 동의 메시지를 불러오지 못했습니다. ${message}`);
+      return;
     } finally {
       setCheckingAgreement(false);
     }

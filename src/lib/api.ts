@@ -80,6 +80,7 @@ function requestKey(endpoint: string, method: string, isAdmin: boolean, body: un
 }
 
 function guardRepeatedRequest(key: string, method: string) {
+  if (method === 'GET') return;
   const now = Date.now();
   const cooldownUntil = requestCooldowns.get(key) || 0;
   if (inFlightRequests.has(key) || cooldownUntil > now) {
