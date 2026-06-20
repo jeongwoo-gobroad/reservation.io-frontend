@@ -423,7 +423,7 @@ export default function AdminSchedulesPage() {
                 </div>
                 <div className="repeatable-list">
                   {draft.time_slots.map((slot, index) => (
-                    <div key={`${slot.label}-${index}`} className="field-row">
+                    <div key={`slot-${index}`} className="field-row">
                       <div className="form-group">
                         <label className="form-label" htmlFor={`slot-label-${index}`}>
                           방문 시간
@@ -478,7 +478,7 @@ export default function AdminSchedulesPage() {
 
               <div className="repeatable-list">
                 {draft.groups.map((group, groupIndex) => (
-                  <div key={`${group.name}-${groupIndex}`} className="repeatable-block">
+                  <div key={`group-${groupIndex}`} className="repeatable-block">
                     <div className="section-heading section-heading-compact">
                       <div>
                         <h4>상품 그룹 {groupIndex + 1}</h4>
@@ -525,7 +525,7 @@ export default function AdminSchedulesPage() {
 
                     <div className="product-editor-list">
                       {group.products.map((product, productIndex) => (
-                        <div key={`${product.name}-${productIndex}`} className="product-editor-row">
+                        <div key={`product-${groupIndex}-${productIndex}`} className="product-editor-row">
                           <div className="form-group">
                             <label className="form-label" htmlFor={`product-name-${groupIndex}-${productIndex}`}>
                               상품 이름
