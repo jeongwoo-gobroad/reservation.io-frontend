@@ -478,7 +478,7 @@ export default function AdminSchedulesPage() {
 
               <div className="repeatable-list">
                 {draft.groups.map((group, groupIndex) => (
-                  <div key={`group-${groupIndex}`} className="repeatable-block">
+                  <div key={`group-${groupIndex}`} className="repeatable-block group-editor">
                     <div className="section-heading section-heading-compact">
                       <div>
                         <h4>상품 그룹 {groupIndex + 1}</h4>
@@ -494,7 +494,7 @@ export default function AdminSchedulesPage() {
                       </button>
                     </div>
 
-                    <div className="form-grid">
+                    <div className="group-settings-grid">
                       <div className="form-group">
                         <label className="form-label" htmlFor={`group-name-${groupIndex}`}>
                           그룹 이름
@@ -507,7 +507,7 @@ export default function AdminSchedulesPage() {
                           required
                         />
                       </div>
-                      <div className="form-group">
+                      <div className="form-group compact-number-field">
                         <label className="form-label" htmlFor={`group-purchase-limit-${groupIndex}`}>
                           그룹 내 구매 제한
                         </label>
@@ -519,57 +519,49 @@ export default function AdminSchedulesPage() {
                           onChange={(event) => updateGroup(groupIndex, { purchase_limit: toPositiveInteger(Number(event.target.value)) })}
                           required
                         />
-                        <p className="field-help">같은 상품 그룹 안에서 한 사람이 총 몇 개까지 고를 수 있는지입니다.</p>
                       </div>
                     </div>
+                    <p className="field-help">그룹 내 구매 제한은 같은 상품 그룹 안에서 한 사람이 총 몇 개까지 고를 수 있는지입니다.</p>
 
-                    <div className="product-editor-list">
+                    <div className="product-editor-table">
+                      <div className="product-editor-head" aria-hidden="true">
+                        <span>상품 이름</span>
+                        <span>총 재고</span>
+                        <span>1인 제한</span>
+                        <span>삭제</span>
+                      </div>
                       {group.products.map((product, productIndex) => (
                         <div key={`product-${groupIndex}-${productIndex}`} className="product-editor-row">
-                          <div className="form-group">
-                            <label className="form-label" htmlFor={`product-name-${groupIndex}-${productIndex}`}>
-                              상품 이름
-                            </label>
-                            <input
-                              id={`product-name-${groupIndex}-${productIndex}`}
-                              value={product.name}
-                              onChange={(event) => updateProduct(groupIndex, productIndex, { name: event.target.value })}
-                              placeholder="예: 확장팩 1박스"
-                              required
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label" htmlFor={`product-stock-${groupIndex}-${productIndex}`}>
-                              총 재고
-                            </label>
-                            <input
-                              id={`product-stock-${groupIndex}-${productIndex}`}
-                              type="number"
-                              min={1}
-                              value={product.stock_quantity}
-                              onChange={(event) =>
-                                updateProduct(groupIndex, productIndex, { stock_quantity: toPositiveInteger(Number(event.target.value)) })
-                              }
-                              required
-                            />
-                            <p className="field-help">상품별 예약 가능한 전체 수량입니다.</p>
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label" htmlFor={`product-user-limit-${groupIndex}-${productIndex}`}>
-                              1인 제한
-                            </label>
-                            <input
-                              id={`product-user-limit-${groupIndex}-${productIndex}`}
-                              type="number"
-                              min={1}
-                              value={product.per_user_limit}
-                              onChange={(event) =>
-                                updateProduct(groupIndex, productIndex, { per_user_limit: toPositiveInteger(Number(event.target.value)) })
-                              }
-                              required
-                            />
-                            <p className="field-help">해당 상품을 한 사람이 최대 몇 개 예약 가능한지입니다.</p>
-                          </div>
+                          <input
+                            id={`product-name-${groupIndex}-${productIndex}`}
+                            aria-label={`상품 그룹 ${groupIndex + 1}의 상품 이름`}
+                            value={product.name}
+                            onChange={(event) => updateProduct(groupIndex, productIndex, { name: event.target.value })}
+                            placeholder="예: 확장팩 1박스"
+                            required
+                          />
+                          <input
+                            id={`product-stock-${groupIndex}-${productIndex}`}
+                            aria-label={`상품 그룹 ${groupIndex + 1}의 총 재고`}
+                            type="number"
+                            min={1}
+                            value={product.stock_quantity}
+                            onChange={(event) =>
+                              updateProduct(groupIndex, productIndex, { stock_quantity: toPositiveInteger(Number(event.target.value)) })
+                            }
+                            required
+                          />
+                          <input
+                            id={`product-user-limit-${groupIndex}-${productIndex}`}
+                            aria-label={`상품 그룹 ${groupIndex + 1}의 1인 제한`}
+                            type="number"
+                            min={1}
+                            value={product.per_user_limit}
+                            onChange={(event) =>
+                              updateProduct(groupIndex, productIndex, { per_user_limit: toPositiveInteger(Number(event.target.value)) })
+                            }
+                            required
+                          />
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm row-remove-button"
@@ -582,6 +574,9 @@ export default function AdminSchedulesPage() {
                         </div>
                       ))}
                     </div>
+                    <p className="product-editor-table-note">
+                      총 재고는 상품별 전체 예약 가능 수량이고, 1인 제한은 해당 상품을 한 사람이 예약할 수 있는 최대 수량입니다.
+                    </p>
 
                     <button type="button" className="btn btn-secondary btn-sm add-row-button" onClick={() => addProduct(groupIndex)}>
                       <Plus size={15} aria-hidden="true" />
@@ -636,86 +631,120 @@ export default function AdminSchedulesPage() {
                         </button>
                       </div>
                     </div>
-                    {items.map((schedule) => {
-                      const productGroups = summarizeProductGroups(schedule.products);
-                      return (
-                        <article key={schedule.uuid} className="list-row schedule-list-row">
-                          <div className="row-main schedule-row-main">
-                            <p className="row-title">{schedule.title}</p>
-                            <div className="row-meta">
-                              <span>{schedule.reservation_open ? '예약 받는 중' : '예약 닫힘'}</span>
-                              <span>{schedule.can_bundle ? '함께 예약 가능' : '단독 예약'}</span>
-                              <span>{schedule.has_time_slots ? '방문 시간 사용' : '방문 시간 없음'}</span>
-                              <span>상품 {schedule.products.length}개</span>
-                            </div>
-
-                            <div className="inventory-summary">
-                              {schedule.has_time_slots && schedule.time_slots.length > 0 && (
-                                <div className="inventory-group">
-                                  <div className="inventory-group-heading">
-                                    <strong>방문 시간</strong>
-                                    <span className="constraint-pill">시간대별 방문 정원</span>
+                    <div className="schedule-table-wrap">
+                      <table className="schedule-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">일정</th>
+                            <th scope="col">상태</th>
+                            <th scope="col">방문 시간</th>
+                            <th scope="col">상품과 재고</th>
+                            <th scope="col">작업</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((schedule) => {
+                            const productGroups = summarizeProductGroups(schedule.products);
+                            return (
+                              <tr key={schedule.uuid}>
+                                <td className="schedule-title-cell">
+                                  <strong>{schedule.title}</strong>
+                                  <span>상품 {schedule.products.length}개</span>
+                                </td>
+                                <td>
+                                  <div className="status-stack">
+                                    <span className={`badge ${schedule.reservation_open ? 'badge-success' : 'badge-warning'}`}>
+                                      {schedule.reservation_open ? '예약 받는 중' : '예약 닫힘'}
+                                    </span>
+                                    <span className={`badge ${schedule.can_bundle ? 'badge-info' : 'badge-warning'}`}>
+                                      {schedule.can_bundle ? '함께 예약 가능' : '단독 예약'}
+                                    </span>
+                                    <span className="badge badge-info">
+                                      {schedule.has_time_slots ? '방문 시간 사용' : '방문 시간 없음'}
+                                    </span>
                                   </div>
-                                  <div className="inventory-row-list">
-                                    {schedule.time_slots.map((slot) => (
-                                      <div key={slot.uuid || slot.label} className="inventory-row inventory-row-3">
-                                        <span>{slot.label}</span>
-                                        <span>최대 {formatQuantity(slot.capacity, '명')}</span>
-                                        <span>남은 자리 {formatQuantity(slot.remaining_customers, '명')}</span>
+                                </td>
+                                <td>
+                                  {schedule.has_time_slots && schedule.time_slots.length > 0 ? (
+                                    <div className="mini-table mini-table-time" role="table" aria-label={`${schedule.title} 방문 시간`}>
+                                      <div className="mini-table-head" role="row">
+                                        <span>시간</span>
+                                        <span>정원</span>
+                                        <span>잔여</span>
+                                      </div>
+                                      {schedule.time_slots.map((slot) => (
+                                        <div key={slot.uuid || slot.label} className="mini-table-row" role="row">
+                                          <span>{slot.label}</span>
+                                          <span>{formatQuantity(slot.capacity, '명')}</span>
+                                          <span>{formatQuantity(slot.remaining_customers, '명')}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="muted">방문 시간 없음</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <div className="schedule-product-table-list">
+                                    {productGroups.map((group) => (
+                                      <div key={group.key} className="schedule-product-table-group">
+                                        <div className="table-group-title">
+                                          <strong>{group.name}</strong>
+                                          <span className="constraint-pill">그룹 제한 {formatQuantity(group.purchaseLimit)}</span>
+                                        </div>
+                                        <div className="mini-table mini-table-products" role="table" aria-label={`${group.name} 상품 재고`}>
+                                          <div className="mini-table-head" role="row">
+                                            <span>상품</span>
+                                            <span>총 재고</span>
+                                            <span>남은 수량</span>
+                                            <span>1인 제한</span>
+                                          </div>
+                                          {group.products.map((product) => (
+                                            <div key={product.uuid} className="mini-table-row" role="row">
+                                              <span className="inventory-product-name">{product.name}</span>
+                                              <span>{formatQuantity(product.stock_quantity)}</span>
+                                              <span>{formatQuantity(product.stock_remaining)}</span>
+                                              <span>{formatQuantity(product.per_user_limit)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
-                                </div>
-                              )}
-
-                              {productGroups.map((group) => (
-                                <div key={group.key} className="inventory-group">
-                                  <div className="inventory-group-heading">
-                                    <strong>{group.name}</strong>
-                                    <span className="constraint-pill">그룹 내 구매 제한 {formatQuantity(group.purchaseLimit)}</span>
+                                </td>
+                                <td>
+                                  <div className="table-actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() => patchSchedule(schedule, { reservation_open: !schedule.reservation_open })}
+                                    >
+                                      {schedule.reservation_open ? '예약 닫기' : '예약 열기'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() => patchSchedule(schedule, { can_bundle: !schedule.can_bundle })}
+                                    >
+                                      <Check size={15} aria-hidden="true" />
+                                      함께 예약
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-danger btn-sm"
+                                      onClick={() => setConfirmAction({ type: 'delete', schedule })}
+                                    >
+                                      <Trash2 size={15} aria-hidden="true" />
+                                      삭제
+                                    </button>
                                   </div>
-                                  <div className="inventory-row-list">
-                                    {group.products.map((product) => (
-                                      <div key={product.uuid} className="inventory-row">
-                                        <span className="inventory-product-name">{product.name}</span>
-                                        <span>총 재고 {formatQuantity(product.stock_quantity)}</span>
-                                        <span>남은 수량 {formatQuantity(product.stock_remaining)}</span>
-                                        <span>1인 제한 {formatQuantity(product.per_user_limit)}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="heading-actions">
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => patchSchedule(schedule, { reservation_open: !schedule.reservation_open })}
-                            >
-                              {schedule.reservation_open ? '예약 닫기' : '예약 열기'}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => patchSchedule(schedule, { can_bundle: !schedule.can_bundle })}
-                            >
-                              <Check size={15} aria-hidden="true" />
-                              함께 예약
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-danger btn-sm"
-                              onClick={() => setConfirmAction({ type: 'delete', schedule })}
-                            >
-                              <Trash2 size={15} aria-hidden="true" />
-                              삭제
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 ))}
               </div>
