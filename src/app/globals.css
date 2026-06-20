@@ -695,15 +695,15 @@ select {
 .product-editor-head,
 .product-editor-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) auto;
+  grid-template-columns: minmax(150px, 1fr) 96px 96px 42px;
   gap: var(--space-3);
   align-items: center;
-  min-width: 560px;
+  min-width: 0;
 }
 
 .product-editor-table .product-editor-head,
 .product-editor-table .product-editor-row {
-  grid-template-columns: minmax(180px, 1.5fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) auto;
+  grid-template-columns: minmax(150px, 1fr) 96px 96px 42px;
 }
 
 .product-editor-head {
@@ -716,6 +716,10 @@ select {
 .product-editor-row {
   border-top: 1px solid var(--color-border);
   padding-block: var(--space-3);
+}
+
+.product-editor-row > * {
+  min-width: 0;
 }
 
 .product-editor-head + .product-editor-row {
@@ -809,9 +813,35 @@ select {
 
 .schedule-table {
   width: 100%;
-  min-width: 860px;
+  min-width: 1120px;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: var(--text-sm);
+}
+
+.schedule-table th:nth-child(1),
+.schedule-table td:nth-child(1) {
+  width: 140px;
+}
+
+.schedule-table th:nth-child(2),
+.schedule-table td:nth-child(2) {
+  width: 128px;
+}
+
+.schedule-table th:nth-child(3),
+.schedule-table td:nth-child(3) {
+  width: 190px;
+}
+
+.schedule-table th:nth-child(4),
+.schedule-table td:nth-child(4) {
+  width: 510px;
+}
+
+.schedule-table th:nth-child(5),
+.schedule-table td:nth-child(5) {
+  width: 152px;
 }
 
 .schedule-table th,
@@ -864,6 +894,10 @@ select {
   min-width: 110px;
 }
 
+.table-actions .btn {
+  width: 100%;
+}
+
 .table-group-title {
   display: flex;
   flex-wrap: wrap;
@@ -895,6 +929,11 @@ select {
   border-top: 1px solid var(--color-border);
   color: var(--color-text-secondary);
   padding-block: var(--space-2);
+}
+
+.mini-table-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mini-table-row:first-of-type {
@@ -1371,6 +1410,14 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .group-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-number-field {
+    max-width: none;
+  }
+
   .section-heading,
   .product-group-heading,
   .field-row,
@@ -1383,6 +1430,19 @@ select {
   .section-heading,
   .product-group-heading {
     display: grid;
+  }
+
+  .product-editor-table {
+    overflow-x: visible;
+  }
+
+  .product-editor-table .product-editor-head {
+    display: none;
+  }
+
+  .product-editor-table .product-editor-row {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .row-remove-button {
