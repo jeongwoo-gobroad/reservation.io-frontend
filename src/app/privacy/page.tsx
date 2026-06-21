@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, ShieldCheck } from 'lucide-react';
-import { apiPublicText, getErrorMessage } from '@/lib/api';
 import { SERVICE_NAME } from '@/lib/constants';
 import Footer from '@/components/Layout/Footer';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -17,11 +16,15 @@ export default function PrivacyPage() {
   useEffect(() => {
     const fetchPolicy = async () => {
       try {
-        const text = await apiPublicText('/static/personal.md');
+        const response = await fetch('/static/personal.md', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('개인정보 처리방침을 불러오지 못했습니다.');
+        }
+        const text = await response.text();
         setContent(text || '');
         setError('');
       } catch (err) {
-        setError(getErrorMessage(err));
+        setError(err instanceof Error ? err.message : '개인정보 처리방침을 불러오지 못했습니다.');
       } finally {
         setLoading(false);
       }
