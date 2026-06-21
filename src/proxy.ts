@@ -143,6 +143,7 @@ export const config = {
     '/api/backend/:path*',
     '/api/reservation-requests/:path*',
     '/api/reservations/:path*',
+    '/api/waiting-room/:path*',
     '/api/admin/schedule-dates/:path*',
   ],
 };

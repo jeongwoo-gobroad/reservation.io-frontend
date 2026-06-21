@@ -121,7 +121,7 @@ export default function ReservationsPage() {
       for (let attempt = 0; isWaitingRoomResponse(response) && attempt < 40; attempt += 1) {
         setWaitingRoom(response);
         setRequestProgress(waitingRoomMessage(response));
-        await delay(Math.max(1, response.retry_after_seconds || 3) * 1000);
+        await delay(Math.max(1, response.poll_after_seconds || response.retry_after_seconds || 3) * 1000);
         response = await retry();
       }
       setWaitingRoom(null);
@@ -397,7 +397,9 @@ export default function ReservationsPage() {
                     <option value="">방문 시간 선택</option>
                     {editSchedule.time_slots.map((slot) => (
                       <option key={slot.uuid} value={slot.uuid}>
-                        {slot.label} · 남은 자리 {slot.remaining_customers}명
+                        {typeof slot.remaining_customers === 'number'
+                          ? `${slot.label} · 남은 자리 ${slot.remaining_customers}명`
+                          : slot.label}
                       </option>
                     ))}
                   </select>

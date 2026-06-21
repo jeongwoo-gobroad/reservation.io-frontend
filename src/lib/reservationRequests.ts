@@ -1,4 +1,4 @@
-import { apiGet } from './api';
+import { apiGatewayPost, apiGet } from './api';
 import type { ReservationRequestStatus, WaitingRoomResponse } from './types';
 
 const PROCESSING_STATUSES = new Set(['pending', 'enqueued', 'processing']);
@@ -65,8 +65,17 @@ export function requestProgressMessage(status: ReservationRequestStatus) {
 }
 
 export function waitingRoomMessage(response: WaitingRoomResponse) {
-  const positionText = response.position ? ` 현재 대기 순번은 ${response.position}번입니다.` : '';
-  return `${response.message || '예약 요청이 몰려 잠시 대기 중입니다.'}${positionText}`;
+  const positionText = response.position ? ` 현재 대기 순번은 ${response.position.toLocaleString('ko-KR')}번입니다.` : '';
+  const aheadText =
+    typeof response.ahead_count === 'number'
+      ? ` 앞에 약 ${response.ahead_count.toLocaleString('ko-KR')}명이 있습니다.`
+      : '';
+  return `${response.message || '예약 요청이 몰려 잠시 대기 중입니다.'}${positionText}${aheadText}`;
+}
+
+export async function releaseWaitingRoom(saleDate?: string) {
+  if (!saleDate) return;
+  await apiGatewayPost<{ released: boolean }>('/waiting-room/release', { sale_date: saleDate }).catch(() => undefined);
 }
 
 export async function waitForReservationRequest(
@@ -78,6 +87,7 @@ export async function waitForReservationRequest(
 
   for (let attempt = 0; attempt < 45; attempt += 1) {
     if (!isRequestProcessing(current.status)) {
+      await releaseWaitingRoom(current.sale_date);
       return current;
     }
 
@@ -87,5 +97,6 @@ export async function waitForReservationRequest(
     onProgress?.(current);
   }
 
+  await releaseWaitingRoom(current.sale_date);
   throw new Error('예약 처리 결과 확인 시간이 초과되었습니다. 잠시 후 내 예약에서 상태를 확인해 주세요.');
 }

@@ -645,3 +645,61 @@ GET /admin/reservations?sale_date=2026-07-01&nickname=피카
 
 - `disclaimer_markdown`
 - `reservation_agreement_markdown`
+
+## rev_005 추가/변경 API
+
+### GET `/static/personal.md`
+
+개인정보 처리방침 Markdown 원문을 반환합니다. 인증 없이 접근할 수 있으며 프론트엔드는 Markdown 렌더러로 표시합니다.
+
+### DELETE `/users/me`
+
+현재 로그인한 이용자의 계정과 연결 기록을 삭제합니다. 성공 시 `204 No Content`를 반환하며 프론트엔드는 토큰을 삭제하고 첫 화면으로 이동합니다.
+
+### GET `/admin/schedules/past`
+
+지난 판매 일정을 페이지 단위로 조회합니다.
+
+쿼리:
+
+- `offset`: 기본 0
+- `limit`: 기본 20, 화면 권장값 10, 20, 50
+
+응답:
+
+```json
+{
+  "items": [],
+  "total": 42,
+  "offset": 0,
+  "limit": 20,
+  "has_more": true
+}
+```
+
+### 일정 숫자 숨김 필드
+
+관리자 일정 생성/수정 요청에는 다음 필드가 포함될 수 있습니다.
+
+```json
+{
+  "show_stock_remaining": true,
+  "show_time_slot_remaining": true
+}
+```
+
+이용자용 `GET /schedules/open`에서 숫자가 숨겨진 경우 `stock_quantity`, `stock_remaining`, `capacity`, `remaining_customers`는 `null`입니다. 프론트엔드는 숫자 영역 자체를 렌더링하지 않습니다.
+
+### 관리자 예약 고객명
+
+`GET /admin/reservations` 응답은 `customer_name`을 포함할 수 있습니다. 프론트엔드는 `customer_name`, `nickname`, `-` 순서로 표시합니다.
+
+### POST `/api/waiting-room/release`
+
+Vercel Function 전용 경로입니다. 예약 생성/수정/삭제 요청의 최종 상태가 확인되면 Redis waiting room lease를 반납합니다.
+
+```json
+{
+  "sale_date": "2026-07-01"
+}
+```

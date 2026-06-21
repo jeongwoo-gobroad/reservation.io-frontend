@@ -49,6 +49,10 @@ function getPositiveLimit(value: number | undefined) {
   return typeof value === 'number' && value > 0 ? value : undefined;
 }
 
+function visibleCount(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 function groupProducts(products: Product[]): ProductGroup[] {
   const groups = new Map<string, ProductGroup>();
 
@@ -176,12 +180,13 @@ export default function SchedulesPage() {
       .reduce((sum, product) => sum + (getSelectedItem(schedule.uuid, product.uuid)?.quantity ?? 0), 0);
 
   const maxQuantityFor = (product: Product) => {
-    const limit = product.per_user_limit && product.per_user_limit > 0 ? product.per_user_limit : product.stock_remaining;
-    return Math.max(1, Math.min(product.stock_remaining, limit));
+    const stockRemaining = visibleCount(product.stock_remaining) ? product.stock_remaining : undefined;
+    const limit = product.per_user_limit && product.per_user_limit > 0 ? product.per_user_limit : stockRemaining ?? 1;
+    return Math.max(1, Math.min(stockRemaining ?? limit, limit));
   };
 
   const toggleProduct = (schedule: Schedule, product: Product, canAdd = true) => {
-    if (product.stock_remaining <= 0) return;
+    if (visibleCount(product.stock_remaining) && product.stock_remaining <= 0) return;
 
     setSelectedItems((prev) => {
       const exists = prev.some(
@@ -308,7 +313,7 @@ export default function SchedulesPage() {
       for (let attempt = 0; isWaitingRoomResponse(response) && attempt < 40; attempt += 1) {
         setWaitingRoom(response);
         setRequestProgress(waitingRoomMessage(response));
-        await delay(Math.max(1, response.retry_after_seconds || 3) * 1000);
+        await delay(Math.max(1, response.poll_after_seconds || response.retry_after_seconds || 3) * 1000);
         response = await apiGatewayPost<ReservationRequestStatus | WaitingRoomResponse>('/reservation-requests', body);
       }
       setWaitingRoom(null);
@@ -423,7 +428,9 @@ export default function SchedulesPage() {
                         <p className="form-label">방문 시간</p>
                         <div className="slot-grid">
                           {schedule.time_slots.map((slot) => {
-                            const full = slot.remaining_customers <= 0;
+                            const timeRemaining = visibleCount(slot.remaining_customers) ? slot.remaining_customers : undefined;
+                            const showTimeRemaining = timeRemaining !== undefined;
+                            const full = showTimeRemaining && timeRemaining <= 0;
                             const selected = selectedSlots[schedule.uuid] === slot.uuid;
                             return (
                               <button
@@ -434,7 +441,9 @@ export default function SchedulesPage() {
                                 onClick={() => selectTimeSlot(schedule.uuid, slot.uuid)}
                               >
                                 <strong>{slot.label}</strong>
-                                <span>{full ? '이 시간은 예약이 모두 찼습니다' : `${slot.remaining_customers}명 가능`}</span>
+                                {showTimeRemaining ? (
+                                  <span>{full ? '이 시간은 예약이 모두 찼습니다' : `${timeRemaining}명 가능`}</span>
+                                ) : null}
                               </button>
                             );
                           })}
@@ -467,7 +476,10 @@ export default function SchedulesPage() {
                             </div>
                             {group.products.map((product) => {
                               const selected = isSelected(schedule.uuid, product.uuid);
-                              const soldOut = product.stock_remaining <= 0;
+                              const stockRemaining = visibleCount(product.stock_remaining) ? product.stock_remaining : undefined;
+                              const stockQuantity = visibleCount(product.stock_quantity) ? product.stock_quantity : undefined;
+                              const showStockRemaining = stockRemaining !== undefined;
+                              const soldOut = showStockRemaining && stockRemaining <= 0;
                               const item = getSelectedItem(schedule.uuid, product.uuid);
                               const productLimit = maxQuantityFor(product);
                               const currentQuantity = item?.quantity ?? 0;
@@ -480,16 +492,20 @@ export default function SchedulesPage() {
                               const productLimitLabel = getPositiveLimit(product.per_user_limit)
                                 ? `상품당 최대 ${product.per_user_limit}개`
                                 : `상품당 최대 ${productLimit}개`;
-                              const stockLabel = product.stock_quantity
-                                ? `남은 수량 ${product.stock_remaining} / ${product.stock_quantity}`
-                                : `남은 수량 ${product.stock_remaining}`;
+                              const stockLabel = showStockRemaining
+                                ? stockQuantity
+                                  ? `남은 수량 ${stockRemaining} / ${stockQuantity}`
+                                  : `남은 수량 ${stockRemaining}`
+                                : '';
                               const availabilityLabel = soldOut
                                 ? '재고가 모두 소진되었습니다'
                                 : completedBlocked
                                   ? '이미 수령 완료 또는 노쇼 처리된 일정입니다'
                                   : groupLimitReached
                                   ? '이 그룹의 선택 제한에 도달했습니다'
-                                  : stockLabel;
+                                  : showStockRemaining
+                                  ? stockLabel
+                                  : '예약 가능 여부는 신청 후 확인됩니다.';
 
                               return (
                                 <div key={product.uuid} className={`product-choice ${selected ? 'selected' : ''}`}>
@@ -503,7 +519,7 @@ export default function SchedulesPage() {
                                       <strong>{product.name}</strong>
                                       <span className="product-limit-list">
                                         <span>{productLimitLabel}</span>
-                                        <span>{stockLabel}</span>
+                                        {showStockRemaining ? <span>{stockLabel}</span> : null}
                                       </span>
                                       <span className={soldOut || groupLimitReached ? 'form-error' : 'muted'}>
                                         {availabilityLabel}

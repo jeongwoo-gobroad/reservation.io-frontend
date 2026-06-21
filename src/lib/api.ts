@@ -8,6 +8,7 @@ interface ApiOptions {
   skipAuth?: boolean;
   headers?: Record<string, string>;
   useGateway?: boolean;
+  responseType?: 'json' | 'text';
 }
 
 export class ApiRequestError extends Error {
@@ -98,7 +99,15 @@ function releaseRequest(key: string) {
 }
 
 export async function api<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
-  const { method = 'GET', body, isAdmin = false, skipAuth = false, headers: customHeaders, useGateway = false } = options;
+  const {
+    method = 'GET',
+    body,
+    isAdmin = false,
+    skipAuth = false,
+    headers: customHeaders,
+    useGateway = false,
+    responseType = 'json',
+  } = options;
   assertApiBaseUrl();
   const key = requestKey(endpoint, method, isAdmin, body);
   guardRepeatedRequest(key, method);
@@ -172,6 +181,10 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
   if (response.status === 204) {
     return undefined as T;
   }
+
+  if (responseType === 'text') {
+    return response.text() as Promise<T>;
+  }
   
   return response.json();
 }
@@ -194,6 +207,9 @@ export const apiDelete = <T>(endpoint: string, isAdmin = false) =>
 
 export const apiPublicGet = <T>(endpoint: string) =>
   api<T>(endpoint, { skipAuth: true });
+
+export const apiPublicText = (endpoint: string) =>
+  api<string>(endpoint, { skipAuth: true, responseType: 'text' });
 
 export const apiGatewayPost = <T>(endpoint: string, body?: unknown, isAdmin = false) =>
   api<T>(endpoint, { method: 'POST', body, isAdmin, useGateway: true });

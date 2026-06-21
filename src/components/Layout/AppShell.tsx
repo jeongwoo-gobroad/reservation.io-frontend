@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -97,10 +97,10 @@ export default function AppShell({
         </div>
         <div className="topbar-actions">
           {variant === 'user' && hasUserSession ? (
-            <span className="user-chip" title={nickname || '닉네임 미설정'}>
+            <Link href="/profile" className="user-chip" title={nickname || '닉네임 미설정'}>
               <UserRound size={16} aria-hidden="true" />
               <span>{nickname ? `${nickname}님` : '닉네임 미설정'}</span>
-            </span>
+            </Link>
           ) : null}
           <button type="button" className="icon-text-button" onClick={logout}>
             <LogOut size={18} aria-hidden="true" />
@@ -138,3 +138,4 @@ export default function AppShell({
     </div>
   );
 }
+

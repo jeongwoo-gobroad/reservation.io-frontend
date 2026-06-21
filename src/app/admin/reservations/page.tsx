@@ -22,6 +22,10 @@ function reservationItems(reservation: AdminReservation): ReservationItem[] {
   ].filter((item) => item.product_name || item.schedule_title);
 }
 
+function customerDisplayName(reservation: AdminReservation) {
+  return reservation.customer_name || reservation.nickname || '-';
+}
+
 export default function AdminReservationsPage() {
   useRequireAdmin();
   const [reservations, setReservations] = useState<AdminReservation[]>([]);
@@ -125,8 +129,8 @@ export default function AdminReservationsPage() {
                   </thead>
                   <tbody>
                     {items.map((reservation) => (
-                      <tr key={reservationKey(reservation) || `${reservation.nickname}-${reservation.created_at}`}>
-                        <td>{reservation.nickname || '-'}</td>
+                      <tr key={reservationKey(reservation) || `${customerDisplayName(reservation)}-${reservation.created_at}`}>
+                        <td>{customerDisplayName(reservation)}</td>
                         <td>{reservation.schedule_title || reservationItems(reservation)[0]?.schedule_title || '-'}</td>
                         <td>
                           {reservationItems(reservation).map((item, index) => (

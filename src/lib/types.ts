@@ -4,8 +4,8 @@ export interface Product {
   group_name?: string;
   group_purchase_limit?: number;
   name: string;
-  stock_quantity?: number;
-  stock_remaining: number;
+  stock_quantity?: number | null;
+  stock_remaining?: number | null;
   per_user_limit?: number;
 }
 
@@ -13,8 +13,8 @@ export interface TimeSlot {
   uuid: string;
   code?: number;
   label: string;
-  capacity?: number;
-  remaining_customers: number;
+  capacity?: number | null;
+  remaining_customers?: number | null;
 }
 
 export interface Schedule {
@@ -24,6 +24,8 @@ export interface Schedule {
   can_bundle: boolean;
   has_time_slots: boolean;
   reservation_open: boolean;
+  show_stock_remaining?: boolean;
+  show_time_slot_remaining?: boolean;
   products: Product[];
   time_slots: TimeSlot[];
 }
@@ -118,6 +120,7 @@ export interface AdminReservation {
   uuid?: string;
   reservation_uuid?: string;
   sale_date?: string;
+  customer_name?: string;
   nickname?: string;
   user_uuid?: string;
   schedule_title?: string;
@@ -214,10 +217,13 @@ export interface ReservationRequestStatus {
 
 export interface WaitingRoomResponse {
   waiting_room: true;
-  status: 'waiting';
+  status: 'waiting' | 'admitted';
   sale_date?: string;
   position?: number;
+  ahead_count?: number;
+  poll_after_seconds?: number;
   retry_after_seconds?: number;
+  lease_seconds?: number;
   message?: string;
 }
 
@@ -244,8 +250,18 @@ export interface ScheduleDraft {
   can_bundle: boolean;
   has_time_slots: boolean;
   reservation_open: boolean;
+  show_stock_remaining: boolean;
+  show_time_slot_remaining: boolean;
   time_slots: ScheduleDraftTimeSlot[];
   groups: ScheduleDraftGroup[];
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
 }
 
 export interface WaitingRoomSync {

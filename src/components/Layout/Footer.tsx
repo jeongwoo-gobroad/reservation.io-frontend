@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { COMPANY_URL, DISPLAY_TIMEZONE_LABEL } from '@/lib/constants';
 
 export default function Footer({ wide = false }: { wide?: boolean }) {
@@ -14,6 +15,9 @@ export default function Footer({ wide = false }: { wide?: boolean }) {
           <a href={COMPANY_URL} target="_blank" rel="noopener noreferrer">
             실용주의 컴퓨팅 연구소
           </a>
+        </p>
+        <p className="footer-links">
+          <Link href="/privacy">개인정보 처리방침</Link>
         </p>
       </div>
       <style jsx>{`
@@ -45,6 +49,17 @@ export default function Footer({ wide = false }: { wide?: boolean }) {
           transition: color var(--transition-fast);
         }
         .footer-copyright a:hover {
+          color: var(--color-accent-hover);
+        }
+        .footer-links {
+          margin-top: var(--space-1);
+          font-size: var(--text-xs);
+          color: var(--color-text-tertiary);
+        }
+        .footer-links a {
+          color: var(--color-accent);
+        }
+        .footer-links a:hover {
           color: var(--color-accent-hover);
         }
       `}</style>

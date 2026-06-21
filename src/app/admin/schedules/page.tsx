@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { CalendarPlus, Check, Lock, Plus, RefreshCw, Trash2, Unlock, X } from 'lucide-react';
+import Link from 'next/link';
+import { CalendarPlus, Check, History, Lock, Plus, RefreshCw, Trash2, Unlock, X } from 'lucide-react';
 import { apiDelete, apiGatewayPost, apiGet, apiPatch, apiPost, getErrorMessage } from '@/lib/api';
 import { formatSaleDate } from '@/lib/format';
 import { useRequireAdmin } from '@/lib/useAuthGuard';
@@ -36,6 +37,8 @@ const createEmptyDraft = (): ScheduleDraft => ({
   can_bundle: true,
   has_time_slots: true,
   reservation_open: false,
+  show_stock_remaining: true,
+  show_time_slot_remaining: true,
   time_slots: [{ label: '14:00', capacity: 10 }],
   groups: [createDraftGroup()],
 });
@@ -59,7 +62,7 @@ function toPositiveInteger(value: number) {
   return Math.max(1, Math.floor(value));
 }
 
-function formatQuantity(value: number | undefined, unit = '개') {
+function formatQuantity(value: number | null | undefined, unit = '개') {
   if (typeof value !== 'number') return '-';
   return `${value.toLocaleString('ko-KR')}${unit}`;
 }
@@ -92,6 +95,8 @@ function normalizeDraft(draft: ScheduleDraft): ScheduleDraft {
   return {
     ...draft,
     title: draft.title.trim(),
+    show_stock_remaining: draft.show_stock_remaining,
+    show_time_slot_remaining: draft.show_time_slot_remaining,
     time_slots: draft.has_time_slots
       ? draft.time_slots.map((slot) => ({
           label: slot.label,
@@ -356,10 +361,16 @@ export default function AdminSchedulesPage() {
       title="판매 일정 관리"
       description="판매 날짜, 상품, 재고, 방문 시간을 만들고 예약 가능 상태를 관리합니다."
       actions={
-        <button type="button" className="btn btn-secondary" onClick={fetchSchedules}>
-          <RefreshCw size={17} aria-hidden="true" />
-          새로고침
-        </button>
+        <>
+          <Link href="/admin/schedules/past" className="btn btn-secondary">
+            <History size={17} aria-hidden="true" />
+            지난 일정
+          </Link>
+          <button type="button" className="btn btn-secondary" onClick={fetchSchedules}>
+            <RefreshCw size={17} aria-hidden="true" />
+            새로고침
+          </button>
+        </>
       }
     >
       <div className="dashboard-grid">
@@ -440,6 +451,22 @@ export default function AdminSchedulesPage() {
                   onChange={(event) => updateDraft('reservation_open', event.target.checked)}
                 />
                 저장 후 바로 예약 받기
+              </label>
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={draft.show_stock_remaining}
+                  onChange={(event) => updateDraft('show_stock_remaining', event.target.checked)}
+                />
+                남은 재고 숫자를 손님에게 보여주기
+              </label>
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={draft.show_time_slot_remaining}
+                  onChange={(event) => updateDraft('show_time_slot_remaining', event.target.checked)}
+                />
+                방문 시간별 남은 자리 수를 손님에게 보여주기
               </label>
             </div>
 
@@ -696,6 +723,12 @@ export default function AdminSchedulesPage() {
                                     <span className="badge badge-info">
                                       {schedule.has_time_slots ? '방문 시간 사용' : '방문 시간 없음'}
                                     </span>
+                                    <span className={`badge ${schedule.show_stock_remaining === false ? 'badge-warning' : 'badge-info'}`}>
+                                      {schedule.show_stock_remaining === false ? '손님 재고 숨김' : '손님 재고 공개'}
+                                    </span>
+                                    <span className={`badge ${schedule.show_time_slot_remaining === false ? 'badge-warning' : 'badge-info'}`}>
+                                      {schedule.show_time_slot_remaining === false ? '손님 인원 숨김' : '손님 인원 공개'}
+                                    </span>
                                   </div>
                                 </td>
                                 <td>
@@ -762,6 +795,24 @@ export default function AdminSchedulesPage() {
                                     >
                                       <Check size={15} aria-hidden="true" />
                                       함께 예약
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() =>
+                                        patchSchedule(schedule, { show_stock_remaining: schedule.show_stock_remaining === false })
+                                      }
+                                    >
+                                      재고 {schedule.show_stock_remaining === false ? '공개' : '숨김'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() =>
+                                        patchSchedule(schedule, { show_time_slot_remaining: schedule.show_time_slot_remaining === false })
+                                      }
+                                    >
+                                      인원 {schedule.show_time_slot_remaining === false ? '공개' : '숨김'}
                                     </button>
                                     <button
                                       type="button"

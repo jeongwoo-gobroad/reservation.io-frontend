@@ -348,3 +348,14 @@ API:
 - 403이면 권한 없음, 예약 제한, IP 차단 중 어떤 상황인지 문맥에 맞게 안내합니다.
 - 409는 이미 처리된 작업입니다. 예: 이미 마감된 영업일
 - 422는 입력 형식 오류입니다. 해당 입력칸 아래에 표시합니다.
+
+## rev_005 프론트엔드 반영 사항
+
+- 상단 사용자 프로필 칩은 `/profile`로 이동하며, 사용자는 `GET /users/me`, `PATCH /users/me/nickname`, `DELETE /users/me`로 닉네임 변경과 회원 탈퇴를 수행합니다.
+- 회원 탈퇴는 “탈퇴하시겠습니까?”, “정말 탈퇴하시겠습니까?” 두 단계 확인 모달을 거친 뒤 실행합니다.
+- 푸터의 개인정보 처리방침 링크는 `/privacy`로 이동하며, 본문은 `GET /static/personal.md`의 Markdown 원문을 렌더링합니다.
+- 관리자 예약 현황의 고객명은 `customer_name`, `nickname`, `-` 순서로 표시합니다.
+- 사용자 예약 화면에서 `stock_quantity`, `stock_remaining`, `capacity`, `remaining_customers`가 `null`이면 해당 숫자 영역을 표시하지 않습니다.
+- 일정 생성 화면은 `show_stock_remaining`, `show_time_slot_remaining` 체크박스를 제공하며, 기존 일정은 표에서 공개/숨김 상태를 토글할 수 있습니다.
+- `/admin/schedules`는 현재/미래 일정만 기본 조회하고, 지난 일정은 `/admin/schedules/past?offset=0&limit=20` 기반의 별도 페이지에서 10, 20, 50개 단위로 조회합니다.
+- 예약 생성/수정/삭제의 Vercel waiting room은 Redis `ZADD`, `ZRANK` 기반 순번을 반환하며, 성공/실패/타임아웃 후 `/api/waiting-room/release`를 호출해 lease를 반납합니다.
