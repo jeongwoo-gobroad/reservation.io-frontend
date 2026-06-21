@@ -139,5 +139,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/backend/:path*'],
+  matcher: [
+    '/api/backend/:path*',
+    '/api/reservation-requests/:path*',
+    '/api/reservations/:path*',
+    '/api/admin/schedule-dates/:path*',
+  ],
 };

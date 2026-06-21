@@ -187,6 +187,40 @@ export interface ReservationUpdateResponse {
   reserved_at?: string;
 }
 
+export type ReservationRequestAction = 'create' | 'update' | 'cancel';
+
+export type ReservationRequestStatusValue =
+  | 'pending'
+  | 'enqueued'
+  | 'processing'
+  | 'success'
+  | 'failed'
+  | 'enqueue_failed';
+
+export interface ReservationRequestStatus {
+  request_uuid: string;
+  action?: ReservationRequestAction;
+  status: ReservationRequestStatusValue;
+  sale_date?: string;
+  target_reservation_uuid?: string;
+  idempotency_key?: string;
+  error_message?: string;
+  reservations?: UserReservation[];
+  attempts?: number;
+  created_at?: string;
+  updated_at?: string;
+  finished_at?: string | null;
+}
+
+export interface WaitingRoomResponse {
+  waiting_room: true;
+  status: 'waiting';
+  sale_date?: string;
+  position?: number;
+  retry_after_seconds?: number;
+  message?: string;
+}
+
 export interface ScheduleDraftProduct {
   name: string;
   stock_quantity: number;
@@ -212,4 +246,22 @@ export interface ScheduleDraft {
   reservation_open: boolean;
   time_slots: ScheduleDraftTimeSlot[];
   groups: ScheduleDraftGroup[];
+}
+
+export interface WaitingRoomSync {
+  sale_date: string;
+  redis_key: string;
+  desired_open: boolean;
+  redis_value?: string;
+  delete_key?: boolean;
+  event?: string;
+  message?: string;
+}
+
+export interface ScheduleDateMutationResponse {
+  sale_date: string;
+  schedules: Schedule[];
+  waiting_room_sync?: WaitingRoomSync;
+  waiting_room_synced?: boolean;
+  waiting_room_sync_error?: string;
 }

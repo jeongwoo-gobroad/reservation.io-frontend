@@ -3,13 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Check, Minus, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { apiGet, apiPost, apiPublicGet, getErrorMessage } from '@/lib/api';
+import { apiGatewayPost, apiGet, apiPublicGet, getErrorMessage } from '@/lib/api';
 import { getUserInfo, isUserLoggedIn } from '@/lib/auth';
 import { formatSaleDate } from '@/lib/format';
-import type { Product, Schedule, SettingValue, UserReservation } from '@/lib/types';
+import {
+  clearAttemptKey,
+  getAttemptKey,
+  isReservationRequestStatus,
+  isRequestFailure,
+  isWaitingRoomResponse,
+  requestProgressMessage,
+  waitForReservationRequest,
+  waitingRoomMessage,
+} from '@/lib/reservationRequests';
+import type { Product, ReservationRequestStatus, Schedule, SettingValue, UserReservation, WaitingRoomResponse } from '@/lib/types';
 import AppShell from '@/components/Layout/AppShell';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import MarkdownViewer from '@/components/common/MarkdownViewer';
+import WaitingRoomModal from '@/components/common/WaitingRoomModal';
 
 interface SelectedItem {
   schedule_set_uuid: string;
@@ -73,6 +84,10 @@ function isSameDateReservationError(message: string) {
   return message.includes('같은 날짜') && message.includes('예약');
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default function SchedulesPage() {
   const router = useRouter();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -86,6 +101,8 @@ export default function SchedulesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [requestProgress, setRequestProgress] = useState('');
+  const [waitingRoom, setWaitingRoom] = useState<WaitingRoomResponse | null>(null);
   const [noticeModal, setNoticeModal] = useState<NoticeModal | null>(null);
   const userInfo = typeof window !== 'undefined' ? getUserInfo() : null;
 
@@ -267,23 +284,52 @@ export default function SchedulesPage() {
     if (!activeSaleDate) return;
     setSubmitting(true);
     setError('');
+    setRequestProgress('예약 요청을 준비하고 있습니다.');
     setShowAgreement(false);
 
     try {
-      await apiPost('/reservations', {
+      const attemptSignature = JSON.stringify({
         sale_date: activeSaleDate,
+        items: selectedItems,
+      });
+      const { idempotencyKey, storageKey } = getAttemptKey('create-reservation', attemptSignature);
+      const body = {
+        sale_date: activeSaleDate,
+        idempotency_key: idempotencyKey,
         items: selectedItems.map((item) => ({
           schedule_set_uuid: item.schedule_set_uuid,
           product_uuid: item.product_uuid,
           quantity: item.quantity,
           time_slot_uuid: item.time_slot_uuid || undefined,
         })),
+      };
+
+      let response = await apiGatewayPost<ReservationRequestStatus | WaitingRoomResponse>('/reservation-requests', body);
+      for (let attempt = 0; isWaitingRoomResponse(response) && attempt < 40; attempt += 1) {
+        setWaitingRoom(response);
+        setRequestProgress(waitingRoomMessage(response));
+        await delay(Math.max(1, response.retry_after_seconds || 3) * 1000);
+        response = await apiGatewayPost<ReservationRequestStatus | WaitingRoomResponse>('/reservation-requests', body);
+      }
+      setWaitingRoom(null);
+
+      if (!isReservationRequestStatus(response)) {
+        throw new Error('예약 요청 대기 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
+      }
+
+      const finalStatus = await waitForReservationRequest(response, (status) => {
+        setRequestProgress(requestProgressMessage(status));
       });
 
-      setSuccessMessage('예약이 완료되었습니다. 내 예약에서 내용을 확인할 수 있습니다.');
+      if (isRequestFailure(finalStatus.status)) {
+        throw new Error(finalStatus.error_message || '예약 요청을 처리하지 못했습니다.');
+      }
+
+      setSuccessMessage('예약이 확정되었습니다. 내 예약에서 내용을 확인할 수 있습니다.');
+      clearAttemptKey(storageKey);
       setSelectedItems([]);
       setSelectedSlots({});
-      fetchSchedules();
+      await fetchSchedules();
     } catch (err) {
       const message = getErrorMessage(err);
       if (isSameDateReservationError(message)) {
@@ -296,6 +342,8 @@ export default function SchedulesPage() {
         setError(message);
       }
     } finally {
+      setWaitingRoom(null);
+      setRequestProgress('');
       setSubmitting(false);
     }
   };
@@ -325,6 +373,11 @@ export default function SchedulesPage() {
           <div className="message message-success">
             <Check size={18} aria-hidden="true" />
             <span>{successMessage}</span>
+          </div>
+        )}
+        {requestProgress && (
+          <div className="message message-info">
+            <span>{requestProgress}</span>
           </div>
         )}
 
@@ -561,6 +614,8 @@ export default function SchedulesPage() {
           </div>
         </>
       ) : null}
+
+      <WaitingRoomModal actionLabel="예약" response={waitingRoom} />
     </AppShell>
   );
 }

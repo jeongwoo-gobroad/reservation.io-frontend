@@ -76,7 +76,8 @@ API:
 API:
 
 - `GET /schedules/open`
-- `POST /reservations`
+- `POST /reservation-requests`
+- `GET /reservation-requests/{request_uuid}`
 - `GET /settings/reservation_agreement_markdown`
 
 표시 규칙:
@@ -97,7 +98,14 @@ API:
 예약 전 확인:
 
 - `reservation_agreement_markdown`을 팝업으로 보여줍니다.
-- 이용자가 확인한 뒤에만 `POST /reservations`를 호출합니다.
+- 이용자가 확인한 뒤에만 Vercel 함수 `/api/reservation-requests`를 호출합니다.
+- 요청 본문에는 브라우저에서 생성한 `idempotency_key`를 포함합니다.
+- 대기실 응답이 오면 같은 `idempotency_key`로 재시도하고, `request_uuid`가 오면 `GET /reservation-requests/{request_uuid}`를 폴링합니다.
+- 대기실 응답에 `position`이 있으면 수강신청 사이트처럼 “현재 대기 순번은 n번입니다”를 표시합니다.
+- 수요가 많아 대기실 응답이 온 동안에는 별도 모달을 띄워 자동 재시도 중임을 명확히 보여줍니다.
+- `pending`, `enqueued`, `processing`은 처리 중으로 표시합니다.
+- `success`이면 예약 확정 안내와 함께 일정/내 예약 데이터를 새로고침합니다.
+- `failed`, `enqueue_failed`이면 `error_message`를 모달 또는 오류 영역에 표시합니다.
 
 ### 5. 내 예약
 
@@ -108,13 +116,20 @@ API:
 API:
 
 - `GET /users/me/reservations`
+- `PATCH /reservations/{reservation_uuid}`
 - `DELETE /reservations/{reservation_uuid}`
+- `GET /reservation-requests/{request_uuid}`
 
 표시 규칙:
 
 - 예약 일시는 `예약 일시: 2026-06-06 13:59:08`처럼 표시합니다.
 - `예약 일시(Seoul, KR)`처럼 본문에 장소명을 넣지 않습니다.
 - 방문 시간은 `방문 시간 14:00`처럼 실제 시간만 표시합니다.
+- 수정은 Vercel 함수 `/api/reservations/{reservation_uuid}`에 `PATCH`로 보냅니다.
+- 수정 요청 본문에는 `idempotency_key`, `quantity`, 필요 시 `time_slot_uuid`를 포함합니다.
+- 취소는 Vercel 함수 `/api/reservations/{reservation_uuid}`에 `DELETE`로 보내며 `Idempotency-Key` 헤더를 포함합니다.
+- 수정/취소 응답으로 받은 `request_uuid`를 폴링하고, 성공 확정 후 목록을 새로고침합니다.
+- 수정/취소에서도 대기실 응답이 오면 예약 생성과 같은 대기 순번 모달을 보여줍니다.
 
 ### 6. 방문 확인증
 
@@ -240,8 +255,8 @@ API:
 - `POST /admin/schedules`
 - `PATCH /admin/schedules/{schedule_set_uuid}`
 - `DELETE /admin/schedules/{schedule_set_uuid}`
-- `POST /admin/schedule-dates/{sale_date}/open`
-- `POST /admin/schedule-dates/{sale_date}/close`
+- `POST /api/admin/schedule-dates/{sale_date}/open`
+- `POST /api/admin/schedule-dates/{sale_date}/close`
 - `POST /admin/schedule-dates/{sale_date}/reset-reservations`
 
 구성:
@@ -267,6 +282,8 @@ API:
 - `enum`, `코드`, `0`, `1` 같은 내부 용어를 표시하지 않습니다.
 - 관리자는 시간을 직접 고릅니다.
 - 내부 코드는 프론트엔드/백엔드가 알아서 처리합니다.
+- 판매 일자 열기/닫기는 Vercel Function을 거쳐 Cloud Run 상태 저장과 Vercel Redis 대기실 `wr:open:{sale_date}` 동기화를 함께 수행합니다.
+- 열기/닫기 후에는 백엔드 일정 상태 저장 결과와 Vercel 대기실 동기화 결과를 모두 보여줍니다.
 
 ### 5. 현재 예약 현황
 

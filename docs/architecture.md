@@ -67,16 +67,21 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     participant User as 이용자
-    participant Front as Vercel
+    participant Front as Vercel Frontend
+    participant Gateway as Vercel Function
     participant Api as Cloud Run API
     participant Db as Cloud SQL
 
     User->>Front: 일정/상품 선택
-    Front->>Api: POST /reservations
+    Front->>Gateway: POST /api/reservation-requests
+    Gateway->>Api: POST /reservation-requests
     Api->>Db: 일정, 재고, 시간대, 유저 제한 검증
     Db-->>Api: 현재 예약 현황
-    Api->>Db: 예약 생성
-    Api-->>Front: 예약 결과
+    Api->>Db: 예약 요청 큐 처리
+    Api-->>Gateway: request_uuid
+    Gateway-->>Front: request_uuid
+    Front->>Api: GET /reservation-requests/{request_uuid}
+    Api-->>Front: 요청 상태와 예약 결과
 ```
 
 ### 방문 확인

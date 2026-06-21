@@ -3,13 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CalendarX, Pencil, RefreshCw, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { apiDelete, apiGet, apiPatch, getErrorMessage } from '@/lib/api';
+import { apiGatewayDelete, apiGatewayPatch, apiGet, getErrorMessage } from '@/lib/api';
 import { formatDateTime, formatSaleDate, reservationKey } from '@/lib/format';
 import { isUserLoggedIn } from '@/lib/auth';
-import type { ReservationItem, ReservationUpdateResponse, Schedule, UserReservation } from '@/lib/types';
+import {
+  clearAttemptKey,
+  getAttemptKey,
+  isReservationRequestStatus,
+  isRequestFailure,
+  isWaitingRoomResponse,
+  requestProgressMessage,
+  waitForReservationRequest,
+  waitingRoomMessage,
+} from '@/lib/reservationRequests';
+import type { ReservationItem, ReservationRequestStatus, Schedule, UserReservation, WaitingRoomResponse } from '@/lib/types';
 import AppShell from '@/components/Layout/AppShell';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
+import WaitingRoomModal from '@/components/common/WaitingRoomModal';
 
 function reservationItems(reservation: UserReservation): ReservationItem[] {
   if (reservation.items?.length) return reservation.items;
@@ -47,6 +58,10 @@ function canEditReservation(reservation: UserReservation) {
   return !reservation.status || reservation.status === 'reserved';
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default function ReservationsPage() {
   const router = useRouter();
   const [reservations, setReservations] = useState<UserReservation[]>([]);
@@ -59,6 +74,9 @@ export default function ReservationsPage() {
   const [editForm, setEditForm] = useState({ quantity: 1, time_slot_uuid: '' });
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [requestProgress, setRequestProgress] = useState('');
+  const [waitingRoom, setWaitingRoom] = useState<WaitingRoomResponse | null>(null);
+  const [waitingRoomAction, setWaitingRoomAction] = useState('예약');
 
   const fetchReservations = useCallback(async () => {
     setLoading(true);
@@ -94,6 +112,37 @@ export default function ReservationsPage() {
     }, {});
   }, [reservations]);
 
+  const resolveMutationResponse = useCallback(
+    async (
+      initialResponse: ReservationRequestStatus | WaitingRoomResponse,
+      retry: () => Promise<ReservationRequestStatus | WaitingRoomResponse>,
+    ) => {
+      let response = initialResponse;
+      for (let attempt = 0; isWaitingRoomResponse(response) && attempt < 40; attempt += 1) {
+        setWaitingRoom(response);
+        setRequestProgress(waitingRoomMessage(response));
+        await delay(Math.max(1, response.retry_after_seconds || 3) * 1000);
+        response = await retry();
+      }
+      setWaitingRoom(null);
+
+      if (!isReservationRequestStatus(response)) {
+        throw new Error('예약 처리 대기 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
+      }
+
+      const finalStatus = await waitForReservationRequest(response, (status) => {
+        setRequestProgress(requestProgressMessage(status));
+      });
+
+      if (isRequestFailure(finalStatus.status)) {
+        throw new Error(finalStatus.error_message || '예약 요청을 처리하지 못했습니다.');
+      }
+
+      return finalStatus;
+    },
+    [],
+  );
+
   const handleCancel = async () => {
     if (!cancelTarget) return;
     const key = reservationKey(cancelTarget);
@@ -104,14 +153,27 @@ export default function ReservationsPage() {
     }
 
     setCancelling(true);
+    setError('');
+    setMessage('');
+    setCancelTarget(null);
+    setWaitingRoomAction('예약 취소');
+    setRequestProgress('예약 취소 요청을 접수하고 있습니다.');
     try {
-      await apiDelete(`/reservations/${key}`);
-      setMessage('예약이 취소되었습니다.');
+      const { idempotencyKey, storageKey } = getAttemptKey('cancel-reservation', key);
+      const requestCancel = () =>
+        apiGatewayDelete<ReservationRequestStatus | WaitingRoomResponse>(`/reservations/${key}`, {
+          'Idempotency-Key': idempotencyKey,
+        });
+      await resolveMutationResponse(await requestCancel(), requestCancel);
+      clearAttemptKey(storageKey);
+      setMessage('예약 취소가 확정되었습니다.');
       setCancelTarget(null);
-      fetchReservations();
+      await fetchReservations();
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
+      setWaitingRoom(null);
+      setRequestProgress('');
       setCancelling(false);
     }
   };
@@ -146,17 +208,30 @@ export default function ReservationsPage() {
     setEditing(true);
     setError('');
     setMessage('');
+    setWaitingRoomAction('예약 수정');
+    setRequestProgress('예약 수정 요청을 접수하고 있습니다.');
     try {
-      await apiPatch<ReservationUpdateResponse>(`/reservations/${key}`, {
+      const body = {
         quantity: editQuantityValue,
         time_slot_uuid: editForm.time_slot_uuid || undefined,
-      });
-      setMessage('예약을 수정했습니다.');
+      };
+      const { idempotencyKey, storageKey } = getAttemptKey(
+        'update-reservation',
+        JSON.stringify({ reservation_uuid: key, ...body }),
+      );
+      const requestBody = { ...body, idempotency_key: idempotencyKey };
+      const requestUpdate = () =>
+        apiGatewayPatch<ReservationRequestStatus | WaitingRoomResponse>(`/reservations/${key}`, requestBody);
+      await resolveMutationResponse(await requestUpdate(), requestUpdate);
+      clearAttemptKey(storageKey);
+      setMessage('예약 수정이 확정되었습니다.');
       setEditTarget(null);
       await fetchReservations();
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
+      setWaitingRoom(null);
+      setRequestProgress('');
       setEditing(false);
     }
   };
@@ -172,7 +247,7 @@ export default function ReservationsPage() {
   return (
     <AppShell
       title="내 예약"
-      description="현재 예약을 확인하고, 필요하면 예약을 취소합니다."
+      description="현재 예약을 확인하고, 필요하면 예약을 수정하거나 취소합니다."
       actions={
         <button type="button" className="btn btn-secondary" onClick={fetchReservations} disabled={loading}>
           <RefreshCw size={17} aria-hidden="true" />
@@ -188,6 +263,7 @@ export default function ReservationsPage() {
           </div>
         )}
         {message && <div className="message message-success">{message}</div>}
+        {requestProgress && <div className="message message-info">{requestProgress}</div>}
 
         {reservations.length === 0 ? (
           <div className="empty-state">
@@ -342,6 +418,8 @@ export default function ReservationsPage() {
           </div>
         </>
       )}
+
+      <WaitingRoomModal actionLabel={waitingRoomAction} response={waitingRoom} />
     </AppShell>
   );
 }

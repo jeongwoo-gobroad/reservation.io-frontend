@@ -1128,6 +1128,33 @@ select {
   border-top: 1px solid var(--color-border);
 }
 
+.waiting-room-panel {
+  display: grid;
+  gap: var(--space-3);
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-muted);
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.waiting-room-position {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.waiting-room-position span {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.waiting-room-position strong {
+  color: var(--color-accent);
+  font-size: clamp(2rem, 8vw, 3.75rem);
+  line-height: 1;
+}
+
 .bottom-action {
   position: sticky;
   bottom: 0;

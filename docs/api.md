@@ -157,7 +157,7 @@
 - 같은 `sale_date`에 여러 `schedule_set`이 존재할 수 있습니다.
 - `can_bundle`은 날짜 속성이 아니라 일정별 속성입니다.
 - 이용자가 같은 날짜의 여러 일정을 한 번에 예약하려면 선택된 모든 일정의 `can_bundle`이 `true`여야 합니다.
-- 프론트엔드는 먼저 안내할 수 있지만, 최종 검증은 `POST /reservations`가 수행합니다.
+- 프론트엔드는 먼저 안내할 수 있지만, 최종 검증은 `POST /reservation-requests`가 수행합니다.
 
 ## 관리자 판매 일정
 
@@ -208,9 +208,49 @@
 
 같은 날짜에 속한 모든 일정을 예약 가능 상태로 바꿉니다.
 
+응답:
+
+```json
+{
+  "sale_date": "2026-07-01",
+  "schedules": [],
+  "waiting_room_sync": {
+    "sale_date": "2026-07-01",
+    "redis_key": "wr:open:2026-07-01",
+    "desired_open": true,
+    "redis_value": "1",
+    "delete_key": false,
+    "event": "schedule_date_opened",
+    "message": "Vercel Redis에서 이 날짜 waiting room을 열어 주세요."
+  }
+}
+```
+
+프론트엔드는 Cloud Run을 직접 호출하지 않고 Vercel Function `/api/admin/schedule-dates/{sale_date}/open`을 호출합니다. Vercel Function은 응답의 `waiting_room_sync`를 읽어 Redis `wr:open:{sale_date}`를 자동으로 `SET`합니다.
+
 ### POST `/admin/schedule-dates/{sale_date}/close`
 
 같은 날짜에 속한 모든 일정을 예약 마감 상태로 바꿉니다.
+
+응답:
+
+```json
+{
+  "sale_date": "2026-07-01",
+  "schedules": [],
+  "waiting_room_sync": {
+    "sale_date": "2026-07-01",
+    "redis_key": "wr:open:2026-07-01",
+    "desired_open": false,
+    "redis_value": "0",
+    "delete_key": true,
+    "event": "schedule_date_closed",
+    "message": "Vercel Redis에서 이 날짜 waiting room을 닫아 주세요."
+  }
+}
+```
+
+프론트엔드는 Vercel Function `/api/admin/schedule-dates/{sale_date}/close`를 호출합니다. Vercel Function은 `delete_key=true`이면 Redis에서 `wr:open:{sale_date}`를 삭제합니다.
 
 ### POST `/admin/schedule-dates/{sale_date}/reset-reservations`
 
@@ -218,15 +258,16 @@
 
 ## 예약
 
-### POST `/reservations`
+### POST `/reservation-requests`
 
-이용자가 예약을 생성합니다.
+이용자가 예약 생성 요청을 접수합니다. 이 API는 예약을 즉시 확정하지 않고 `request_uuid`를 반환하며, 프론트엔드는 상태 조회 API를 폴링해 최종 결과를 반영합니다.
 
 요청:
 
 ```json
 {
   "sale_date": "2026-07-01",
+  "idempotency_key": "client-generated-uuid",
   "items": [
     {
       "schedule_set_uuid": "schedule-set-uuid",
@@ -235,6 +276,18 @@
       "time_slot_uuid": "slot-uuid"
     }
   ]
+}
+```
+
+응답:
+
+```json
+{
+  "request_uuid": "request-uuid",
+  "action": "create",
+  "status": "pending",
+  "sale_date": "2026-07-01",
+  "idempotency_key": "client-generated-uuid"
 }
 ```
 
@@ -249,13 +302,83 @@
 - 상품별 1인 제한, 상품 그룹 제한 확인
 - DB transaction과 row lock으로 동시 예약 경쟁 방어
 
+프론트엔드 규칙:
+
+- 같은 예약 시도에서는 같은 `idempotency_key`를 재사용합니다.
+- 새 예약 시도에서는 새 `idempotency_key`를 생성합니다.
+- 브라우저는 Vercel 함수 `/api/reservation-requests`로 요청하고, Vercel 함수가 Cloud Run에 `X-Reservation-Gateway-Secret`을 붙입니다.
+
+### GET `/reservation-requests/{request_uuid}`
+
+예약 생성, 수정, 취소 요청의 처리 상태를 조회합니다.
+
+응답:
+
+```json
+{
+  "request_uuid": "request-uuid",
+  "action": "create",
+  "status": "processing",
+  "sale_date": "2026-07-01",
+  "error_message": "",
+  "reservations": []
+}
+```
+
+상태:
+
+- `pending`, `enqueued`, `processing`: 아직 처리 중입니다. 프론트엔드는 계속 폴링합니다.
+- `success`: 요청이 확정되었습니다. `reservations`가 있으면 화면 상태에 반영합니다.
+- `failed`, `enqueue_failed`: 요청이 실패했습니다. `error_message`를 표시하고 폴링을 멈춥니다.
+
 ### GET `/users/me/reservations`
 
 이용자의 현재 예약 목록입니다.
 
+### PATCH `/reservations/{reservation_uuid}`
+
+예약 하나를 수정합니다. 응답은 최종 예약 객체가 아니라 예약 요청 상태 객체입니다.
+
+요청:
+
+```json
+{
+  "idempotency_key": "client-generated-uuid",
+  "quantity": 1,
+  "time_slot_uuid": "slot-uuid"
+}
+```
+
+응답:
+
+```json
+{
+  "request_uuid": "request-uuid",
+  "action": "update",
+  "status": "pending",
+  "target_reservation_uuid": "reservation-uuid"
+}
+```
+
 ### DELETE `/reservations/{reservation_uuid}`
 
-예약 하나를 취소합니다.
+예약 하나를 취소합니다. `Idempotency-Key` 헤더가 필요하며, 응답은 예약 요청 상태 객체입니다.
+
+```http
+DELETE /reservations/reservation-uuid
+Idempotency-Key: client-generated-uuid
+```
+
+응답:
+
+```json
+{
+  "request_uuid": "request-uuid",
+  "action": "cancel",
+  "status": "pending",
+  "target_reservation_uuid": "reservation-uuid"
+}
+```
 
 ## 방문 확인 OTP
 

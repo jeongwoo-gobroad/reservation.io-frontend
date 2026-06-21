@@ -6,6 +6,8 @@ interface ApiOptions {
   body?: unknown;
   isAdmin?: boolean;
   skipAuth?: boolean;
+  headers?: Record<string, string>;
+  useGateway?: boolean;
 }
 
 export class ApiRequestError extends Error {
@@ -29,9 +31,10 @@ const MUTATION_COOLDOWN_MS = 650;
 const inFlightRequests = new Set<string>();
 const requestCooldowns = new Map<string, number>();
 
-function buildApiUrl(endpoint: string): string {
+function buildApiUrl(endpoint: string, useGateway = false): string {
   const base = API_BASE_URL.replace(/\/$/, '');
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  if (useGateway) return `/api${path}`;
   return `${base}${path}`;
 }
 
@@ -95,7 +98,7 @@ function releaseRequest(key: string) {
 }
 
 export async function api<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
-  const { method = 'GET', body, isAdmin = false, skipAuth = false } = options;
+  const { method = 'GET', body, isAdmin = false, skipAuth = false, headers: customHeaders, useGateway = false } = options;
   assertApiBaseUrl();
   const key = requestKey(endpoint, method, isAdmin, body);
   guardRepeatedRequest(key, method);
@@ -110,6 +113,12 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
       headers['Authorization'] = `Bearer ${token}`;
     }
   }
+
+  if (customHeaders) {
+    Object.entries(customHeaders).forEach(([name, value]) => {
+      headers[name] = value;
+    });
+  }
   
   const config: RequestInit = {
     method,
@@ -122,7 +131,7 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
   
   let response: Response;
   try {
-    response = await fetch(buildApiUrl(endpoint), config);
+    response = await fetch(buildApiUrl(endpoint, useGateway), config);
   } catch (error) {
     throw new ApiRequestError(
       0,
@@ -186,13 +195,22 @@ export const apiDelete = <T>(endpoint: string, isAdmin = false) =>
 export const apiPublicGet = <T>(endpoint: string) =>
   api<T>(endpoint, { skipAuth: true });
 
+export const apiGatewayPost = <T>(endpoint: string, body?: unknown, isAdmin = false) =>
+  api<T>(endpoint, { method: 'POST', body, isAdmin, useGateway: true });
+
+export const apiGatewayPatch = <T>(endpoint: string, body?: unknown) =>
+  api<T>(endpoint, { method: 'PATCH', body, useGateway: true });
+
+export const apiGatewayDelete = <T>(endpoint: string, headers?: Record<string, string>) =>
+  api<T>(endpoint, { method: 'DELETE', headers, useGateway: true });
+
 // Error message helper
 export function getErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     switch (error.status) {
       case 0: return error.detail;
       case 403: return error.detail || '접근 권한이 없습니다.';
-      case 409: return '이미 처리된 요청입니다.';
+      case 409: return error.detail || '이미 처리 대기 중인 예약 요청이 있습니다. 처리가 끝난 뒤 다시 시도해 주세요.';
       case 429: return error.detail || '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.';
       case 422: return error.detail;
       default: return error.detail;

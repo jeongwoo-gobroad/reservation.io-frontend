@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CalendarPlus, Check, Lock, Plus, RefreshCw, Trash2, Unlock, X } from 'lucide-react';
-import { apiDelete, apiGet, apiPatch, apiPost, getErrorMessage } from '@/lib/api';
+import { apiDelete, apiGatewayPost, apiGet, apiPatch, apiPost, getErrorMessage } from '@/lib/api';
 import { formatSaleDate } from '@/lib/format';
 import { useRequireAdmin } from '@/lib/useAuthGuard';
 import type {
@@ -12,6 +12,7 @@ import type {
   ScheduleDraftGroup,
   ScheduleDraftProduct,
   ScheduleDraftTimeSlot,
+  ScheduleDateMutationResponse,
 } from '@/lib/types';
 import AppShell from '@/components/Layout/AppShell';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
@@ -107,6 +108,31 @@ function normalizeDraft(draft: ScheduleDraft): ScheduleDraft {
       })),
     })),
   };
+}
+
+function scheduleDateMutationMessage(action: 'open' | 'close', result: ScheduleDateMutationResponse) {
+  const base =
+    action === 'open'
+      ? `판매 일자 ${formatSaleDate(result.sale_date)}을 예약 가능 상태로 저장했습니다.`
+      : `판매 일자 ${formatSaleDate(result.sale_date)}을 예약 마감 상태로 저장했습니다.`;
+
+  if (!result.waiting_room_sync) return base;
+
+  if (!result.waiting_room_synced) {
+    return `${base} 하지만 Vercel 대기실 상태 동기화에 실패했습니다. 잠시 뒤 다시 해당 일자 ${
+      action === 'open' ? '열기' : '닫기'
+    }를 눌러 동기화해 주세요. ${result.waiting_room_sync_error || ''}`.trim();
+  }
+
+  if (action === 'open' && result.waiting_room_sync.desired_open) {
+    return `${base} Vercel 대기실도 열렸습니다.`;
+  }
+
+  if (action === 'open' && !result.waiting_room_sync.desired_open) {
+    return `${base} 해당 날짜에 등록된 판매 일정이 없어 대기실은 열지 않았습니다.`;
+  }
+
+  return `${base} Vercel 대기실도 닫혔습니다.`;
 }
 
 export default function AdminSchedulesPage() {
@@ -270,12 +296,20 @@ export default function AdminSchedulesPage() {
         setMessage('판매 일정을 삭제했습니다.');
       }
       if (confirmAction.type === 'openDate') {
-        await apiPost(`/admin/schedule-dates/${confirmAction.saleDate}/open`, undefined, true);
-        setMessage(`${formatSaleDate(confirmAction.saleDate)} 예약을 열었습니다.`);
+        const result = await apiGatewayPost<ScheduleDateMutationResponse>(
+          `/admin/schedule-dates/${confirmAction.saleDate}/open`,
+          undefined,
+          true,
+        );
+        setMessage(scheduleDateMutationMessage('open', result));
       }
       if (confirmAction.type === 'closeDate') {
-        await apiPost(`/admin/schedule-dates/${confirmAction.saleDate}/close`, undefined, true);
-        setMessage(`${formatSaleDate(confirmAction.saleDate)} 예약을 닫았습니다.`);
+        const result = await apiGatewayPost<ScheduleDateMutationResponse>(
+          `/admin/schedule-dates/${confirmAction.saleDate}/close`,
+          undefined,
+          true,
+        );
+        setMessage(scheduleDateMutationMessage('close', result));
       }
       if (confirmAction.type === 'resetDate') {
         await apiPost(`/admin/schedule-dates/${confirmAction.saleDate}/reset-reservations`, undefined, true);

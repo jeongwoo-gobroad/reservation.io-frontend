@@ -28,6 +28,12 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | `/api/backend` |
 | `API_REWRITE_ORIGIN` | 실제 API 서버 주소. 예: `https://reservation-api-881902730598.asia-northeast3.run.app` |
+| `BACKEND_API_BASE_URL` | 예약 변이 Vercel 함수가 호출할 실제 API 서버 주소. 보통 `API_REWRITE_ORIGIN`과 같은 값 |
+| `RESERVATION_GATEWAY_SECRET` | Cloud Run 백엔드가 예약 변이 요청의 Vercel 경유 여부를 검증할 서버 전용 비밀값 |
+| `WAITING_ROOM_ENABLED` | 대기실을 켜려면 `true` |
+| `WAITING_ROOM_MAX_ACTIVE` | 판매일별 동시에 Cloud Run으로 통과시킬 예약 변이 요청 수. 예: `80` |
+| `WAITING_ROOM_LEASE_SECONDS` | 통과권 TTL. 예: `45` |
+| `WAITING_ROOM_POLL_SECONDS` | 대기 중 브라우저 재시도 간격. 예: `3` |
 | `RATE_LIMIT_COUNTER` | Sliding Window Counter 기준 1초당 허용할 요청 수. 예: `8` |
 | `REDIS_URL` | Vercel Redis 연결 후 자동 주입된 값 |
 | `UPSTASH_REDIS_REST_URL` | Upstash REST 방식일 때만 필요 |
@@ -39,8 +45,11 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 
 코드에서 이미 설정되어 있습니다.
 
-- `src/proxy.ts`: `/api/backend/:path*` 요청을 대상으로 `(사용자, IP, API)` 트리플을 Redis Sliding Window Counter로 카운트합니다.
+- `src/proxy.ts`: `/api/backend/:path*`, `/api/reservation-requests/:path*`, `/api/reservations/:path*` 요청을 대상으로 `(사용자, IP, API)` 트리플을 Redis Sliding Window Counter로 카운트합니다.
 - `next.config.ts`: `/api/backend/:path*` 요청을 `API_REWRITE_ORIGIN/:path*`로 전달합니다.
+- `src/app/api/admin/schedule-dates/[sale_date]/[action]/route.ts`: 어드민 판매 일자 오픈/마감 후 Cloud Run 응답의 `waiting_room_sync`를 읽어 Redis `wr:open:{sale_date}`를 자동 동기화합니다.
+- `src/app/api/reservation-requests/route.ts`: 예약 생성 요청을 대기실 검사 후 Cloud Run `POST /reservation-requests`로 전달합니다.
+- `src/app/api/reservations/[reservation_uuid]/route.ts`: 예약 수정/취소 요청을 대기실 검사 후 Cloud Run `PATCH/DELETE /reservations/{reservation_uuid}`로 전달합니다.
 
 사용자 식별자는 브라우저가 보내는 `Authorization: Bearer ...` 토큰을 해시한 값입니다. 로그인 전 요청은 `anon`으로 묶이며, IP와 API 경로가 함께 들어가므로 로그인/공개 API에도 최소 방어가 적용됩니다.
 
@@ -55,7 +64,51 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 
 이 방식은 단순 고정 윈도우보다 경계 시점의 순간 버스트를 줄이면서, Vercel Proxy와 Redis 환경에서 Lua 스크립트 없이 안정적으로 동작합니다.
 
-## 4. 배포
+## 4. 판매 일자 오픈/마감과 대기실 동기화
+
+어드민 화면의 판매 일자 열기/닫기 버튼은 Cloud Run을 직접 호출하지 않고 Vercel Function을 거칩니다.
+
+- 열기: `POST /api/admin/schedule-dates/{sale_date}/open`
+- 닫기: `POST /api/admin/schedule-dates/{sale_date}/close`
+
+Vercel Function은 다음 순서로 동작합니다.
+
+1. 어드민 `Authorization` 헤더를 Cloud Run으로 전달합니다.
+2. Cloud Run `/admin/schedule-dates/{sale_date}/open` 또는 `/close`를 호출합니다.
+3. Cloud Run 응답이 실패하면 Redis를 건드리지 않고 오류를 그대로 반환합니다.
+4. 성공 응답의 `waiting_room_sync`를 읽습니다.
+5. `desired_open=true`이면 `SET wr:open:{sale_date} 1`을 실행합니다.
+6. `delete_key=true`이면 `DEL wr:open:{sale_date}`를 실행합니다.
+7. Redis 동기화 결과를 `waiting_room_synced`, `waiting_room_sync_error`로 어드민 화면에 함께 반환합니다.
+
+따라서 운영자가 Vercel Redis 콘솔에서 `wr:open:{sale_date}`를 수동으로 만들 필요는 없습니다. Redis 장애 등으로 동기화가 실패한 경우에는 어드민 화면에 부분 성공 안내가 표시되며, 같은 판매 일자 열기/닫기 버튼을 다시 눌러 재동기화할 수 있습니다.
+
+## 5. 예약 대기실 설정
+
+예약 생성, 수정, 취소는 브라우저가 Cloud Run을 직접 호출하지 않고 Vercel 함수로 들어옵니다.
+
+- 생성: `POST /api/reservation-requests`
+- 수정: `PATCH /api/reservations/{reservation_uuid}`
+- 취소: `DELETE /api/reservations/{reservation_uuid}`
+
+Vercel 함수는 다음 순서로 동작합니다.
+
+1. `WAITING_ROOM_ENABLED=true`인지 확인합니다.
+2. Redis에서 `wr:open:{sale_date}` 값이 `1`, `true`, `open`, `enabled` 중 하나인지 확인합니다.
+3. 이미 `wr:lease:{sale_date}:{user}`가 있으면 바로 통과합니다.
+4. 없으면 `wr:queue:{sale_date}`에 사용자를 넣고, `wr:active:{sale_date}`의 활성 사용자 수가 `WAITING_ROOM_MAX_ACTIVE`보다 작으면 통과권을 발급합니다.
+5. 통과하지 못하면 HTTP 202와 대기 순번, 재시도 초를 반환합니다.
+
+Redis 키:
+
+- `wr:open:{sale_date}`: 해당 판매일 대기실 활성 플래그. 어드민 열기/닫기 Vercel Function이 자동으로 SET/DEL합니다.
+- `wr:queue:{sale_date}`: 대기열 Sorted Set
+- `wr:active:{sale_date}`: 활성 통과권 Sorted Set. score는 만료 시각입니다.
+- `wr:lease:{sale_date}:{user}`: 통과권 TTL 키
+
+이 값이 없으면 예약 변이 요청은 대기실 없이 바로 Cloud Run으로 전달됩니다. 이는 닫힌 날짜나 동기화되지 않은 날짜에서 대기실을 임의로 열지 않기 위한 기본값입니다.
+
+## 6. 배포
 
 1. GitHub에 변경 사항을 push합니다.
 2. Vercel 프로젝트가 GitHub 저장소와 연결되어 있는지 확인합니다.
@@ -63,16 +116,22 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 4. 배포 로그에서 `npm install`, `next build`가 통과하는지 확인합니다.
 5. 로컬과 Vercel 모두 Node.js 20.19 이상을 사용하도록 맞춥니다.
 
-## 5. 검증
+## 7. 검증
 
 1. 배포된 사이트에서 개발자 도구 Network 탭을 엽니다.
 2. 예약 목록, 내 예약, 방문 확인증 요청 URL이 `/api/backend/...`로 나가는지 확인합니다.
-3. 응답 헤더에 `x-ratelimit-algorithm: sliding-window-counter`가 있는지 확인합니다.
-4. `x-ratelimit-store: redis-url`이면 Vercel Redis의 `REDIS_URL` 연결이 적용된 상태입니다.
-5. 같은 API를 Sliding Window Counter 기준 1초 안에 `RATE_LIMIT_COUNTER`보다 많이 호출하면 HTTP `429`와 `rate_limited` 응답이 나와야 합니다.
-6. 정상 사용 중 429가 잦으면 `RATE_LIMIT_COUNTER`를 올리고 재배포합니다.
+3. 예약 생성 요청은 `/api/reservation-requests`, 예약 수정/취소 요청은 `/api/reservations/{reservation_uuid}`로 나가는지 확인합니다.
+4. 어드민 판매 일정 관리에서 날짜 열기/닫기 요청이 `/api/admin/schedule-dates/{sale_date}/open|close`로 나가는지 확인합니다.
+5. 날짜 열기 성공 후 응답에 `waiting_room_synced: true`가 있고 Redis에 `wr:open:{sale_date}` 값이 생기는지 확인합니다.
+6. 날짜 닫기 성공 후 응답에 `waiting_room_synced: true`가 있고 Redis에서 `wr:open:{sale_date}`가 삭제되는지 확인합니다.
+7. 응답 헤더에 `x-ratelimit-algorithm: sliding-window-counter`가 있는지 확인합니다.
+8. `x-ratelimit-store: redis-url`이면 Vercel Redis의 `REDIS_URL` 연결이 적용된 상태입니다.
+9. 같은 API를 Sliding Window Counter 기준 1초 안에 `RATE_LIMIT_COUNTER`보다 많이 호출하면 HTTP `429`와 `rate_limited` 응답이 나와야 합니다.
+10. `WAITING_ROOM_ENABLED=true`이고 열린 판매일에서 예약 요청이 많으면 HTTP 202 대기실 응답 후 같은 idempotency key로 재시도되는지 확인합니다.
+11. 대기실 응답에 `position`이 있으면 이용자 화면에 “현재 대기 순번은 n번입니다”가 표시되어야 합니다.
+12. 정상 사용 중 429가 잦으면 `RATE_LIMIT_COUNTER`를 올리고 재배포합니다.
 
-## 6. 운영 메모
+## 8. 운영 메모
 
 - Vercel Redis가 연결되지 않은 Preview 환경에서는 Rate Limit이 자동으로 통과됩니다.
 - 수동 코드 발급은 `/users/me/visit-manual-code`를 누를 때만 호출되므로 Firestore 읽기/쓰기 부담이 줄어듭니다.
