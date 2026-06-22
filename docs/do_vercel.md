@@ -30,11 +30,13 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 | `API_REWRITE_ORIGIN` | 실제 API 서버 주소. 예: `https://reservation-api-881902730598.asia-northeast3.run.app` |
 | `BACKEND_API_BASE_URL` | 예약 변이 Vercel 함수가 호출할 실제 API 서버 주소. 보통 `API_REWRITE_ORIGIN`과 같은 값 |
 | `RESERVATION_GATEWAY_SECRET` | Cloud Run 백엔드가 예약 변이 요청의 Vercel 경유 여부를 검증할 서버 전용 비밀값 |
+| `BACKEND_FETCH_TIMEOUT_MS` | Vercel Function이 Cloud Run 응답을 기다리는 최대 시간. 기본 `15000` |
 | `WAITING_ROOM_ENABLED` | 대기실을 켜려면 `true` |
 | `WAITING_ROOM_MAX_ACTIVE` | 판매일별 동시에 Cloud Run으로 통과시킬 예약 변이 요청 수. 예: `80` |
 | `WAITING_ROOM_LEASE_SECONDS` | 통과권 TTL. 예: `45` |
 | `WAITING_ROOM_POLL_SECONDS` | 대기 중 브라우저 재시도 간격. 예: `3` |
 | `RATE_LIMIT_COUNTER` | Sliding Window Counter 기준 1초당 허용할 요청 수. 예: `8` |
+| `RATE_LIMIT_IP_COUNTER` | Authorization 값 회전 우회를 막기 위한 IP/API 보조 제한. 기본은 `RATE_LIMIT_COUNTER * 5` |
 | `REDIS_URL` | Vercel Redis 연결 후 자동 주입된 값 |
 | `UPSTASH_REDIS_REST_URL` | Upstash REST 방식일 때만 필요 |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash REST 방식일 때만 필요 |
@@ -45,7 +47,8 @@ Vercel Dashboard의 `Settings` > `Environment Variables`에서 아래 값을 설
 
 코드에서 이미 설정되어 있습니다.
 
-- `src/proxy.ts`: `/api/backend/:path*`, `/api/reservation-requests/:path*`, `/api/reservations/:path*` 요청을 대상으로 `(사용자, IP, API)` 트리플을 Redis Sliding Window Counter로 카운트합니다.
+- `src/proxy.ts`: `/api/backend/:path*`, `/api/reservation-requests/:path*`, `/api/reservations/:path*`, `/api/waiting-room/:path*`, `/api/admin/schedule-dates/:path*`, `/static/personal.md` 요청을 대상으로 Redis Sliding Window Counter를 적용합니다.
+- 기본 제한은 `(Authorization 토큰 해시, IP, API)` 트리플이고, Authorization 값 회전 우회를 줄이기 위해 `(IP, API)` 보조 제한도 함께 적용합니다.
 - `next.config.ts`: `/api/backend/:path*` 요청을 `API_REWRITE_ORIGIN/:path*`로 전달합니다.
 - `src/app/api/admin/schedule-dates/[sale_date]/[action]/route.ts`: 어드민 판매 일자 오픈/마감 후 Cloud Run 응답의 `waiting_room_sync`를 읽어 Redis `wr:open:{sale_date}`를 자동 동기화합니다.
 - `src/app/api/reservation-requests/route.ts`: 예약 생성 요청을 대기실 검사 후 Cloud Run `POST /reservation-requests`로 전달합니다.
@@ -127,9 +130,11 @@ Redis 키:
 7. 응답 헤더에 `x-ratelimit-algorithm: sliding-window-counter`가 있는지 확인합니다.
 8. `x-ratelimit-store: redis-url`이면 Vercel Redis의 `REDIS_URL` 연결이 적용된 상태입니다.
 9. 같은 API를 Sliding Window Counter 기준 1초 안에 `RATE_LIMIT_COUNTER`보다 많이 호출하면 HTTP `429`와 `rate_limited` 응답이 나와야 합니다.
-10. `WAITING_ROOM_ENABLED=true`이고 열린 판매일에서 예약 요청이 많으면 HTTP 202 대기실 응답 후 같은 idempotency key로 재시도되는지 확인합니다.
-11. 대기실 응답에 `position`이 있으면 이용자 화면에 “현재 대기 순번은 n번입니다”가 표시되어야 합니다.
-12. 정상 사용 중 429가 잦으면 `RATE_LIMIT_COUNTER`를 올리고 재배포합니다.
+10. Authorization 값을 바꿔 보내더라도 같은 IP/API 요청이 `RATE_LIMIT_IP_COUNTER`를 넘으면 HTTP `429`가 나와야 합니다.
+11. `/privacy` 페이지가 내부적으로 `GET /static/personal.md`를 호출하고 Markdown 원문을 표시하는지 확인합니다.
+12. `WAITING_ROOM_ENABLED=true`이고 열린 판매일에서 예약 요청이 많으면 HTTP 202 대기실 응답 후 같은 idempotency key로 재시도되는지 확인합니다.
+13. 대기실 응답에 `position`이 있으면 이용자 화면에 “현재 대기 순번은 n번입니다”가 표시되어야 합니다.
+14. 정상 사용 중 429가 잦으면 `RATE_LIMIT_COUNTER`와 `RATE_LIMIT_IP_COUNTER`를 함께 조정하고 재배포합니다.
 
 ## 8. 운영 메모
 

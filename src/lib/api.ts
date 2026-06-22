@@ -108,7 +108,9 @@ export async function api<T>(endpoint: string, options: ApiOptions = {}): Promis
     useGateway = false,
     responseType = 'json',
   } = options;
-  assertApiBaseUrl();
+  if (!useGateway) {
+    assertApiBaseUrl();
+  }
   const key = requestKey(endpoint, method, isAdmin, body);
   guardRepeatedRequest(key, method);
   
@@ -214,8 +216,8 @@ export const apiPublicText = (endpoint: string) =>
 export const apiGatewayPost = <T>(endpoint: string, body?: unknown, isAdmin = false) =>
   api<T>(endpoint, { method: 'POST', body, isAdmin, useGateway: true });
 
-export const apiGatewayPatch = <T>(endpoint: string, body?: unknown) =>
-  api<T>(endpoint, { method: 'PATCH', body, useGateway: true });
+export const apiGatewayPatch = <T>(endpoint: string, body?: unknown, headers?: Record<string, string>) =>
+  api<T>(endpoint, { method: 'PATCH', body, headers, useGateway: true });
 
 export const apiGatewayDelete = <T>(endpoint: string, headers?: Record<string, string>) =>
   api<T>(endpoint, { method: 'DELETE', headers, useGateway: true });

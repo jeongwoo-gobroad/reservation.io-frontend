@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { AlertCircle, Save, Trash2, UserRound } from 'lucide-react';
 import { apiDelete, apiGet, apiPatch, getErrorMessage } from '@/lib/api';
-import { setUserInfo } from '@/lib/auth';
+import { removeUserToken, setUserInfo } from '@/lib/auth';
 import { useRequireUser } from '@/lib/useAuthGuard';
 import type { UserProfile } from '@/lib/types';
 import AppShell from '@/components/Layout/AppShell';
@@ -84,8 +84,7 @@ export default function ProfilePage() {
     setError('');
     try {
       await apiDelete<void>('/users/me');
-      window.localStorage.removeItem('reservatio_user_token');
-      window.localStorage.removeItem('reservatio_user_info');
+      removeUserToken();
       window.location.href = '/';
     } catch (err) {
       setError(getErrorMessage(err));

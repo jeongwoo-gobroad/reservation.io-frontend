@@ -28,6 +28,21 @@ function waitingRoomPollSeconds() {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 3;
 }
 
+function backendFetchTimeoutMs() {
+  const parsed = Number(process.env.BACKEND_FETCH_TIMEOUT_MS || '15000');
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 15000;
+}
+
+async function fetchWithTimeout(input: string, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), backendFetchTimeoutMs());
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function getRedisClient() {
   if (redisClient !== undefined) return redisClient;
   redisClient = createRedisClient();
@@ -47,26 +62,10 @@ async function digest(value: string) {
   return createHash('sha256').update(value).digest('hex').slice(0, 32);
 }
 
-function decodeJwtUserUuid(authorization: string) {
-  const token = authorization.replace(/^Bearer\s+/i, '');
-  const payloadSegment = token.split('.')[1];
-  if (!payloadSegment) return '';
-
-  try {
-    const normalized = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(Buffer.from(normalized, 'base64').toString('utf8')) as Record<string, unknown>;
-    const candidate = payload.user_uuid || payload.sub || payload.uid;
-    return typeof candidate === 'string' ? candidate : '';
-  } catch {
-    return '';
-  }
-}
-
 async function waitingRoomUserKey(request: NextRequest) {
   const authorization = request.headers.get('authorization') || '';
   if (authorization) {
-    const userUuid = decodeJwtUserUuid(authorization);
-    if (userUuid) return `user:${await digest(userUuid)}`;
+    // Do not trust JWT payload here: this Vercel layer does not verify backend token signatures.
     return `auth:${await digest(authorization.replace(/^Bearer\s+/i, ''))}`;
   }
 
@@ -170,6 +169,10 @@ export async function enterWaitingRoom(request: NextRequest, saleDate?: string |
     String(leaseSeconds),
     String(pollSeconds),
   ]).catch(() => null);
+
+  if (!result) {
+    return { allowed: true as const };
+  }
 
   if (Array.isArray(result)) {
     const status = toLuaString(result[0]);
@@ -275,12 +278,18 @@ export async function forwardToBackend(request: NextRequest, path: string, init:
     );
   }
 
-  const response = await fetch(`${origin}${path.startsWith('/') ? path : `/${path}`}`, {
+  const response = await fetchWithTimeout(`${origin}${path.startsWith('/') ? path : `/${path}`}`, {
     method: init.method,
     headers: passthroughHeaders(request),
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     cache: 'no-store',
-  });
+  }).catch(() => null);
+  if (!response) {
+    return NextResponse.json(
+      { detail: { code: 'backend_timeout', message: '백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.' } },
+      { status: 504, headers: { 'cache-control': 'no-store' } },
+    );
+  }
   const text = await response.text();
   const headers = new Headers({
     'cache-control': 'no-store',
@@ -299,12 +308,18 @@ export async function fetchBackendJson(request: NextRequest, path: string, init:
     );
   }
 
-  const response = await fetch(`${origin}${path.startsWith('/') ? path : `/${path}`}`, {
+  const response = await fetchWithTimeout(`${origin}${path.startsWith('/') ? path : `/${path}`}`, {
     method: init.method,
     headers: passthroughHeaders(request),
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     cache: 'no-store',
-  });
+  }).catch(() => null);
+  if (!response) {
+    return NextResponse.json(
+      { detail: { code: 'backend_timeout', message: '백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.' } },
+      { status: 504, headers: { 'cache-control': 'no-store' } },
+    );
+  }
 
   const text = await response.text();
   const json = text ? await Promise.resolve().then(() => JSON.parse(text)).catch(() => null) : null;
@@ -320,6 +335,12 @@ export async function syncWaitingRoomOpenKey(sync?: WaitingRoomSync) {
   try {
     if (sync.delete_key) {
       await redisCommand(redis, ['DEL', sync.redis_key]);
+      if (sync.sale_date) {
+        await Promise.allSettled([
+          redisCommand(redis, ['DEL', `wr:queue:${sync.sale_date}`]),
+          redisCommand(redis, ['DEL', `wr:active:${sync.sale_date}`]),
+        ]);
+      }
       return { synced: true };
     }
 
@@ -329,6 +350,12 @@ export async function syncWaitingRoomOpenKey(sync?: WaitingRoomSync) {
     }
 
     await redisCommand(redis, ['DEL', sync.redis_key]);
+    if (sync.sale_date) {
+      await Promise.allSettled([
+        redisCommand(redis, ['DEL', `wr:queue:${sync.sale_date}`]),
+        redisCommand(redis, ['DEL', `wr:active:${sync.sale_date}`]),
+      ]);
+    }
     return { synced: true };
   } catch (error) {
     return {
@@ -339,11 +366,14 @@ export async function syncWaitingRoomOpenKey(sync?: WaitingRoomSync) {
 }
 
 export async function resolveReservationSaleDate(request: NextRequest, reservationUuid: string) {
+  const saleDateHeader = request.headers.get('x-sale-date');
+  if (saleDateHeader) return saleDateHeader;
+
   const origin = backendOrigin();
   const authorization = request.headers.get('authorization');
   if (!origin || !authorization) return null;
 
-  const response = await fetch(`${origin}/users/me/reservations`, {
+  const response = await fetchWithTimeout(`${origin}/users/me/reservations`, {
     headers: { authorization },
     cache: 'no-store',
   }).catch(() => null);

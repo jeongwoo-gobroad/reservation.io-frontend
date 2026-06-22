@@ -81,13 +81,14 @@ export async function releaseWaitingRoom(saleDate?: string) {
 export async function waitForReservationRequest(
   initialStatus: ReservationRequestStatus,
   onProgress?: (status: ReservationRequestStatus) => void,
+  fallbackSaleDate?: string,
 ) {
   let current = initialStatus;
   onProgress?.(current);
 
   for (let attempt = 0; attempt < 45; attempt += 1) {
     if (!isRequestProcessing(current.status)) {
-      await releaseWaitingRoom(current.sale_date);
+      await releaseWaitingRoom(current.sale_date || fallbackSaleDate);
       return current;
     }
 
@@ -97,6 +98,6 @@ export async function waitForReservationRequest(
     onProgress?.(current);
   }
 
-  await releaseWaitingRoom(current.sale_date);
+  await releaseWaitingRoom(current.sale_date || fallbackSaleDate);
   throw new Error('예약 처리 결과 확인 시간이 초과되었습니다. 잠시 후 내 예약에서 상태를 확인해 주세요.');
 }

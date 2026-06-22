@@ -61,6 +61,12 @@ function getRateLimitCounter() {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 8;
 }
 
+function getRateLimitIpCounter(baseLimit: number) {
+  const parsed = Number(process.env.RATE_LIMIT_IP_COUNTER || '');
+  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  return Math.max(baseLimit * 5, baseLimit);
+}
+
 function getApiKey(request: NextRequest) {
   const path = request.nextUrl.pathname.replace(/^\/api\/backend\/?/, '/');
   return `${request.method}:${path || '/'}`;
@@ -81,43 +87,59 @@ async function actorKey(request: NextRequest) {
   return `auth:${await digest(authorization.replace(/^Bearer\s+/i, ''))}`;
 }
 
+async function estimateSlidingWindow(
+  redis: RateLimitRedisClient,
+  keyBase: string,
+  bucket: number,
+  previousWeight: number,
+) {
+  const currentKey = `${keyBase}:${bucket}`;
+  const previousKey = `${keyBase}:${bucket - 1}`;
+  const currentCount = await redis.incr(currentKey);
+  const [previousRaw] = await Promise.all([
+    redis.get(previousKey),
+    currentCount === 1 ? redis.expire(currentKey, RATE_LIMIT_KEY_TTL_SECONDS) : Promise.resolve(0),
+  ]);
+  const previousCount = Number(previousRaw || 0);
+  return currentCount + previousCount * previousWeight;
+}
+
 export async function proxy(request: NextRequest) {
   const redis = await getRedisClient().catch(() => null);
   if (!redis) return NextResponse.next();
 
   const limit = getRateLimitCounter();
+  const ipLimit = getRateLimitIpCounter(limit);
   const nowMs = Date.now();
   const bucket = Math.floor(nowMs / RATE_LIMIT_WINDOW_MS);
   const elapsedMs = nowMs % RATE_LIMIT_WINDOW_MS;
   const previousWeight = (RATE_LIMIT_WINDOW_MS - elapsedMs) / RATE_LIMIT_WINDOW_MS;
-  const keyParts = await Promise.all([
+  const [ipHash, actor, apiHash] = await Promise.all([
     digest(getClientIp(request)),
     actorKey(request),
     digest(getApiKey(request)),
   ]);
-  const keyBase = `reservation-io:rl:${keyParts.join(':')}`;
-  const currentKey = `${keyBase}:${bucket}`;
-  const previousKey = `${keyBase}:${bucket - 1}`;
+  const tripleKeyBase = `reservation-io:rl:triple:${ipHash}:${actor}:${apiHash}`;
+  const ipApiKeyBase = `reservation-io:rl:ip-api:${ipHash}:${apiHash}`;
 
   try {
-    const currentCount = await redis.incr(currentKey);
-    const [previousRaw] = await Promise.all([
-      redis.get(previousKey),
-      currentCount === 1 ? redis.expire(currentKey, RATE_LIMIT_KEY_TTL_SECONDS) : Promise.resolve(0),
+    const [estimatedCount, estimatedIpApiCount] = await Promise.all([
+      estimateSlidingWindow(redis, tripleKeyBase, bucket, previousWeight),
+      estimateSlidingWindow(redis, ipApiKeyBase, bucket, previousWeight),
     ]);
-    const previousCount = Number(previousRaw || 0);
-    const estimatedCount = currentCount + previousCount * previousWeight;
     const resetAtMs = (bucket + 1) * RATE_LIMIT_WINDOW_MS;
 
     const headers = new Headers({
       'x-ratelimit-limit': String(limit),
       'x-ratelimit-remaining': String(Math.max(0, Math.floor(limit - estimatedCount))),
+      'x-ratelimit-ip-limit': String(ipLimit),
+      'x-ratelimit-ip-remaining': String(Math.max(0, Math.floor(ipLimit - estimatedIpApiCount))),
       'x-ratelimit-reset': String(Math.ceil(resetAtMs / 1000)),
       'x-ratelimit-algorithm': 'sliding-window-counter',
       'x-ratelimit-store': redis.provider,
     });
 
-    if (estimatedCount > limit) {
+    if (estimatedCount > limit || estimatedIpApiCount > ipLimit) {
       headers.set('retry-after', '1');
       return NextResponse.json(
         {
@@ -145,5 +167,6 @@ export const config = {
     '/api/reservations/:path*',
     '/api/waiting-room/:path*',
     '/api/admin/schedule-dates/:path*',
+    '/static/personal.md',
   ],
 };

@@ -12,6 +12,7 @@ import {
   isReservationRequestStatus,
   isRequestFailure,
   isWaitingRoomResponse,
+  releaseWaitingRoom,
   requestProgressMessage,
   waitForReservationRequest,
   waitingRoomMessage,
@@ -324,7 +325,7 @@ export default function SchedulesPage() {
 
       const finalStatus = await waitForReservationRequest(response, (status) => {
         setRequestProgress(requestProgressMessage(status));
-      });
+      }, activeSaleDate);
 
       if (isRequestFailure(finalStatus.status)) {
         throw new Error(finalStatus.error_message || '예약 요청을 처리하지 못했습니다.');
@@ -347,6 +348,7 @@ export default function SchedulesPage() {
         setError(message);
       }
     } finally {
+      await releaseWaitingRoom(activeSaleDate);
       setWaitingRoom(null);
       setRequestProgress('');
       setSubmitting(false);

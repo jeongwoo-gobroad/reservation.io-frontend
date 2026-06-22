@@ -12,6 +12,7 @@ import {
   isReservationRequestStatus,
   isRequestFailure,
   isWaitingRoomResponse,
+  releaseWaitingRoom,
   requestProgressMessage,
   waitForReservationRequest,
   waitingRoomMessage,
@@ -116,6 +117,7 @@ export default function ReservationsPage() {
     async (
       initialResponse: ReservationRequestStatus | WaitingRoomResponse,
       retry: () => Promise<ReservationRequestStatus | WaitingRoomResponse>,
+      fallbackSaleDate?: string,
     ) => {
       let response = initialResponse;
       for (let attempt = 0; isWaitingRoomResponse(response) && attempt < 40; attempt += 1) {
@@ -132,7 +134,7 @@ export default function ReservationsPage() {
 
       const finalStatus = await waitForReservationRequest(response, (status) => {
         setRequestProgress(requestProgressMessage(status));
-      });
+      }, fallbackSaleDate);
 
       if (isRequestFailure(finalStatus.status)) {
         throw new Error(finalStatus.error_message || '예약 요청을 처리하지 못했습니다.');
@@ -146,6 +148,7 @@ export default function ReservationsPage() {
   const handleCancel = async () => {
     if (!cancelTarget) return;
     const key = reservationKey(cancelTarget);
+    const saleDate = cancelTarget.sale_date || '';
     if (!key) {
       setError('취소할 예약을 찾을 수 없습니다.');
       setCancelTarget(null);
@@ -163,8 +166,9 @@ export default function ReservationsPage() {
       const requestCancel = () =>
         apiGatewayDelete<ReservationRequestStatus | WaitingRoomResponse>(`/reservations/${key}`, {
           'Idempotency-Key': idempotencyKey,
+          ...(saleDate ? { 'X-Sale-Date': saleDate } : {}),
         });
-      await resolveMutationResponse(await requestCancel(), requestCancel);
+      await resolveMutationResponse(await requestCancel(), requestCancel, saleDate);
       clearAttemptKey(storageKey);
       setMessage('예약 취소가 확정되었습니다.');
       setCancelTarget(null);
@@ -172,6 +176,7 @@ export default function ReservationsPage() {
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
+      await releaseWaitingRoom(saleDate);
       setWaitingRoom(null);
       setRequestProgress('');
       setCancelling(false);
@@ -199,6 +204,7 @@ export default function ReservationsPage() {
   const submitEdit = async () => {
     if (!editTarget) return;
     const key = reservationKey(editTarget);
+    const saleDate = editTarget.sale_date || '';
     if (!key) {
       setError('수정할 예약을 찾을 수 없습니다.');
       setEditTarget(null);
@@ -221,8 +227,12 @@ export default function ReservationsPage() {
       );
       const requestBody = { ...body, idempotency_key: idempotencyKey };
       const requestUpdate = () =>
-        apiGatewayPatch<ReservationRequestStatus | WaitingRoomResponse>(`/reservations/${key}`, requestBody);
-      await resolveMutationResponse(await requestUpdate(), requestUpdate);
+        apiGatewayPatch<ReservationRequestStatus | WaitingRoomResponse>(
+          `/reservations/${key}`,
+          requestBody,
+          saleDate ? { 'X-Sale-Date': saleDate } : undefined,
+        );
+      await resolveMutationResponse(await requestUpdate(), requestUpdate, saleDate);
       clearAttemptKey(storageKey);
       setMessage('예약 수정이 확정되었습니다.');
       setEditTarget(null);
@@ -230,6 +240,7 @@ export default function ReservationsPage() {
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
+      await releaseWaitingRoom(saleDate);
       setWaitingRoom(null);
       setRequestProgress('');
       setEditing(false);
